@@ -19,20 +19,20 @@ UsageBoard 是一款 macOS menu bar 工具，用于集中展示各种 AI 服务�
 
 ## 2. 技术栈
 
-| 类别 | 选型 |
-|------|------|
-| 应用框架 | SwiftUI App lifecycle + AppKit（`NSStatusItem`、`NSPopover`、`NSWindow`） |
-| 构建 | Swift Package Manager |
-| 最低版本 | macOS 13 |
-| 并发 | Swift 6 strict concurrency（`@MainActor`、`Sendable`、`Task`） |
-| 状态管理 | `ObservableObject` + `@Published`（`UsageBoardStore`） |
-| 配置持久化 | `~/Library/Application Support/UsageBoard/config.json`（JSON 文件） |
-| 插件缓存 | `~/Library/Application Support/UsageBoard/states/` 按 `stateID` 分文件 |
-| 插件执行 | `Process`（子进程），Python 插件用 `/usr/bin/env python3` |
-| JSON 编解码 | 统一 `UsageBoardJSON.decoder()` / `UsageBoardJSON.encoder()` |
-| 本地化 | `AppLocalization`（`(key, language)` 匹配）+ 插件元数据 `field@lang` 后缀 |
-| 测试 | XCTest（Core 层）+ pytest（Python 插件） |
-| 开机启动 | `SMAppService`（macOS 13+ Login Items） |
+| 类别        | 选型                                                                      |
+| ----------- | ------------------------------------------------------------------------- |
+| 应用框架    | SwiftUI App lifecycle + AppKit（`NSStatusItem`、`NSPopover`、`NSWindow`） |
+| 构建        | Swift Package Manager                                                     |
+| 最低版本    | macOS 13                                                                  |
+| 并发        | Swift 6 strict concurrency（`@MainActor`、`Sendable`、`Task`）            |
+| 状态管理    | `ObservableObject` + `@Published`（`UsageBoardStore`）                    |
+| 配置持久化  | `~/Library/Application Support/UsageBoard/config.json`（JSON 文件）       |
+| 插件缓存    | `~/Library/Application Support/UsageBoard/states/` 按 `stateID` 分文件    |
+| 插件执行    | `Process`（子进程），Python 插件用 `/usr/bin/env python3`                 |
+| JSON 编解码 | 统一 `UsageBoardJSON.decoder()` / `UsageBoardJSON.encoder()`              |
+| 本地化      | `AppLocalization`（`(key, language)` 匹配）+ 插件元数据 `field@lang` 后缀 |
+| 测试        | XCTest（Core 层）+ pytest（Python 插件）                                  |
+| 开机启动    | `SMAppService`（macOS 13+ Login Items）                                   |
 
 常用验证命令：
 
@@ -171,13 +171,13 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 ### 4.1 依赖规则
 
-| 层 | 可以依赖 | 不允许依赖 |
-|----|----------|------------|
-| `UsageBoardCore` | `Foundation` | SwiftUI、AppKit、`UsageBoardApp` 内任何类型 |
-| `UsageBoardStore` | `UsageBoardCore`、`Foundation`、`AppKit`、`ServiceManagement` | 具体 View 类型 |
-| Views | `SwiftUI`、`UsageBoardCore`（只读 model）、`UsageBoardStore`、`DesignSystem`、`AppLocalization` | 直接构造 `Process`、直接读写文件 |
-| `DesignSystem` | `SwiftUI` | 业务逻辑、`UsageBoardStore` |
-| Python 插件 | `_common.py`、Python 标准库 | Swift 代码、app 内部状态 |
+| 层                | 可以依赖                                                                                        | 不允许依赖                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `UsageBoardCore`  | `Foundation`                                                                                    | SwiftUI、AppKit、`UsageBoardApp` 内任何类型 |
+| `UsageBoardStore` | `UsageBoardCore`、`Foundation`、`AppKit`、`ServiceManagement`                                   | 具体 View 类型                              |
+| Views             | `SwiftUI`、`UsageBoardCore`（只读 model）、`UsageBoardStore`、`DesignSystem`、`AppLocalization` | 直接构造 `Process`、直接读写文件            |
+| `DesignSystem`    | `SwiftUI`                                                                                       | 业务逻辑、`UsageBoardStore`                 |
+| Python 插件       | `_common.py`、Python 标准库                                                                     | Swift 代码、app 内部状态                    |
 
 **硬性规则**：
 
@@ -214,17 +214,17 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 职责：
 
-| 职责 | 说明 |
-|------|------|
-| 配置管理 | 加载/保存 `AppConfiguration`，`scheduleConfigurationWrite` 合并写入 |
-| 插件调度 | 为每个已启用插件启动定时刷新 `Task`，支持系统睡眠/唤醒门控 |
-| 插件执行 | 委托 `PluginExecutor` 在后台线程运行插件，返回 `PluginSnapshot` |
-| 缓存管理 | 启动时从 `PluginStateStore` 加载缓存，刷新成功后异步写回 |
-| 快照发布 | 维护 `snapshots: [UUID: PluginSnapshot]`，驱动 View 更新 |
-| 元数据重载 | 启动时 `reloadAllMetadata()` 重新解析所有插件的 metadata 并持久化 |
-| 内置插件安装 | 启动时调用 `BundledPluginInstaller.installIfNeeded()` |
-| 更新检查 | 通过 `UpdateChecker` 检查版本，`UpdateDownloader` 下载，`AppRelauncher` 替换重启 |
-| 开机启动 | 通过 `SMAppService.mainApp` 注册/注销 |
+| 职责         | 说明                                                                             |
+| ------------ | -------------------------------------------------------------------------------- |
+| 配置管理     | 加载/保存 `AppConfiguration`，`scheduleConfigurationWrite` 合并写入              |
+| 插件调度     | 为每个已启用插件启动定时刷新 `Task`，支持系统睡眠/唤醒门控                       |
+| 插件执行     | 委托 `PluginExecutor` 在后台线程运行插件，返回 `PluginSnapshot`                  |
+| 缓存管理     | 启动时从 `PluginStateStore` 加载缓存，刷新成功后异步写回                         |
+| 快照发布     | 维护 `snapshots: [UUID: PluginSnapshot]`，驱动 View 更新                         |
+| 元数据重载   | 启动时 `reloadAllMetadata()` 重新解析所有插件的 metadata 并持久化                |
+| 内置插件安装 | 启动时调用 `BundledPluginInstaller.installIfNeeded()`                            |
+| 更新检查     | 通过 `UpdateChecker` 检查版本，`UpdateDownloader` 下载，`AppRelauncher` 替换重启 |
+| 开机启动     | 通过 `SMAppService.mainApp` 注册/注销                                            |
 
 关键设计：
 
@@ -245,21 +245,21 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 ### 6.1 Models
 
-`Models.swift` 集中定义所有共享数据类型，无外部依赖，全部 `Sendable`：
+共享数据类型按主题分散在多个文件（`AppConfiguration.swift`、`PluginConfiguration.swift`、`PluginOutput.swift`、`PluginSnapshot.swift`，枚举辅助见 `CodableHelpers.swift`），无外部依赖，全部 `Sendable`：
 
-| 类型 | 职责 |
-|------|------|
-| `AppLanguage` | 语言枚举（`zh-Hans`、`en`） |
-| `DisplayMode` | 展示模式（`grouped`、`tabs`） |
-| `AppConfiguration` | 顶层配置（schema version、language、display mode、plugins、launch at login） |
-| `PluginConfiguration` | 单个插件配置（`id`=运行时 UUID、`stateID`=持久化 ID、路径、参数值等） |
-| `PluginMetadata` | 插件元数据（name、description、icon、parameters，支持多语言翻译） |
-| `PluginParameterMetadata` | 参数定义（7 种类型：string/secret/integer/boolean/choice/directory/file） |
-| `PluginOutput` | 插件 stdout JSON 解码目标 |
-| `UsageItem` | 单条用量（id、name、used、limit、displayStyle、resetAt、status、color） |
-| `PluginChart` / `PluginChartBucket` / `PluginChartSegment` | token 统计图数据 |
-| `PluginSnapshot` | UI 层消费的插件快照（state、items、badge、iconURL、chart） |
-| `PluginCachedState` | 磁盘缓存结构 |
+| 类型                                                       | 职责                                                                         |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `AppLanguage`                                              | 语言枚举（`zh-Hans`、`en`）                                                  |
+| `DisplayMode`                                              | 展示模式（`grouped`、`tabs`）                                                |
+| `AppConfiguration`                                         | 顶层配置（schema version、language、display mode、plugins、launch at login） |
+| `PluginConfiguration`                                      | 单个插件配置（`id`=运行时 UUID、`stateID`=持久化 ID、路径、参数值等）        |
+| `PluginMetadata`                                           | 插件元数据（name、description、icon、parameters，支持多语言翻译）            |
+| `PluginParameterMetadata`                                  | 参数定义（7 种类型：string/secret/integer/boolean/choice/directory/file）    |
+| `PluginOutput`                                             | 插件 stdout JSON 解码目标                                                    |
+| `UsageItem`                                                | 单条用量（id、name、used、limit、displayStyle、resetAt、status、color）      |
+| `PluginChart` / `PluginChartBucket` / `PluginChartSegment` | token 统计图数据                                                             |
+| `PluginSnapshot`                                           | UI 层消费的插件快照（state、items、badge、iconURL、chart）                   |
+| `PluginCachedState`                                        | 磁盘缓存结构                                                                 |
 
 多语言翻译机制：
 
@@ -286,8 +286,8 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 - `.py` 文件通过 `/usr/bin/env python3 <script>` 执行，其他可执行文件直接运行。
 - 参数通过 `--usageboard-param KEY=value` 传入，自动注入 `USAGEBOARD_LANGUAGE`。
-- 强制设置 `PYTHONIOENCODING=utf-8` + `LANG=en_US.UTF-8` 环境变量，避免编码问题。
-- 默认 15 秒超时，超时后 `terminate()` 进程。
+- 强制设置 `PYTHONIOENCODING=utf-8` + `LANG=en_US.UTF-8` + `LC_ALL=en_US.UTF-8` 环境变量，避免编码问题。
+- 默认 15 秒超时，超时后 `terminate()`（SIGTERM）并最多再等待 1 秒兜底，不发送 SIGKILL。
 - stdout 用 `DataBuffer`（`NSLock` + `readabilityHandler`）异步收集，避免 pipe 死锁。
 - 解码失败时先尝试解析 `{"error": "..."}` 格式的错误输出。
 
@@ -297,11 +297,11 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 ### 6.5 PluginStateStore
 
-按 `stateID` 管理磁盘缓存（`states/<stateID>.json`）：
+按 `stateID` 管理缓存（`states/<stateID>.json`），内存 + 磁盘两级：内部 `StateCache`（`NSLock` 保护）作为内存层，磁盘文件作为持久层。
 
-- `load(stateID:)`：读取缓存。
-- `save(stateID:state:)`：原子写入。
-- `needsRefresh(stateID:intervalSeconds:)`：判断缓存是否过期。
+- `load(stateID:)`：先查内存缓存命中即返回；未命中则读磁盘并回填内存（磁盘文件被删后内存仍可命中）。
+- `save(stateID:state:)`：原子写入磁盘并同步更新内存缓存。
+- `needsRefresh(stateID:intervalSeconds:)`：判断缓存是否过期（间隔下限 5 秒）。
 
 ### 6.6 BundledPluginInstaller
 
@@ -340,33 +340,33 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 `DashboardView.swift` 包含面板展示的全部视图：
 
-| 视图 | 职责 |
-|------|------|
-| `OverviewView` | popover 顶层容器：标题栏 + DashboardView + 设置/退出按钮 |
-| `DashboardView` | 根据 `DisplayMode` 切换 grouped/tabs 布局 |
-| `EmptyPluginsView` | 无启用插件时的占位提示 |
-| `PluginGroupView` | 单个插件卡片：图标 + 标题 + 徽章 + 倒计时 + 用量行 + 统计图 |
-| `UsageItemRow` | 单条用量行：名称 + 进度条 + 数值 + 重置时间 |
-| `UsageProgressBar` | 彩色进度条，高度接近文字行高，数值居中 |
-| `TokenUsageChartView` | token 统计折线图容器 |
-| `TokenLineChartPlot` | 折线图绘制（支持 hour/day 粒度，hover 交互） |
-| `TokenMetricView` | 统计摘要数字（总量、日均、峰值等） |
-| `MeasuredScrollView` | 自适应高度滚动容器，最大高度为屏幕 2/3 |
+| 视图                  | 职责                                                        |
+| --------------------- | ----------------------------------------------------------- |
+| `OverviewView`        | popover 顶层容器：标题栏 + DashboardView + 设置/退出按钮    |
+| `DashboardView`       | 根据 `DisplayMode` 切换 grouped/tabs 布局                   |
+| `EmptyPluginsView`    | 无启用插件时的占位提示                                      |
+| `PluginGroupView`     | 单个插件卡片：图标 + 标题 + 徽章 + 倒计时 + 用量行 + 统计图 |
+| `UsageItemRow`        | 单条用量行：名称 + 进度条 + 数值 + 重置时间                 |
+| `UsageProgressBar`    | 彩色进度条，高度接近文字行高，数值居中                      |
+| `TokenUsageChartView` | token 统计折线图容器                                        |
+| `TokenLineChartPlot`  | 折线图绘制（支持 hour/day 粒度，hover 交互）                |
+| `TokenMetricView`     | 统计摘要数字（总量、日均、峰值等）                          |
+| `MeasuredScrollView`  | 自适应高度滚动容器，最大高度为屏幕 2/3                      |
 
 ### 7.2 SettingsView
 
 `SettingsView.swift` 包含设置窗口的全部视图：
 
-| 视图 / 组件 | 职责 |
-|-------------|------|
-| `SettingsView` | 顶层骨架：sidebar + detail，三个 tab（通用/插件/关于） |
-| `GeneralSettingsView` | 开机启动、语言、展示模式 |
-| `PluginSettingsView` | 插件列表（拖拽排序）+ 详情面板（draft 机制编辑） |
-| `PluginSettingsCard` | 单个插件详情卡片：参数表单、启用/禁用、保存/重置 |
-| `PluginParameterField` | 按参数类型渲染对应输入控件（text/secret/integer/boolean/choice/directory/file） |
-| `PluginDropDelegate` | 插件列表拖拽排序代理 |
-| `AboutView` | 版本信息、更新检查、更新安装 |
-| `SettingsSection` / `SettingsRow` | 设置页共享布局组件 |
+| 视图 / 组件                       | 职责                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `SettingsView`                    | 顶层骨架：sidebar + detail，三个 tab（通用/插件/关于）                          |
+| `GeneralSettingsView`             | 开机启动、语言、展示模式                                                        |
+| `PluginSettingsView`              | 插件列表（拖拽排序）+ 详情面板（draft 机制编辑）                                |
+| `PluginSettingsCard`              | 单个插件详情卡片：参数表单、启用/禁用、保存/重置                                |
+| `PluginParameterField`            | 按参数类型渲染对应输入控件（text/secret/integer/boolean/choice/directory/file） |
+| `PluginDropDelegate`              | 插件列表拖拽排序代理                                                            |
+| `AboutView`                       | 版本信息、更新检查、更新安装                                                    |
+| `SettingsSection` / `SettingsRow` | 设置页共享布局组件                                                              |
 
 设置编辑规范：
 
@@ -378,13 +378,13 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 `DesignSystem/` 存放共享视觉原语：
 
-| 文件 | 职责 |
-|------|------|
-| `UBDesignTokens.swift` | `UB.Radius`（card/bar）、`UB.Font`（各场景字体）、`UB.Canvas`（背景/卡片/分隔线颜色） |
-| `AppIconSquircle.swift` | 圆角方形图标（异步加载 + `NSCache` 内存缓存） |
-| `BrandTile.swift` | 品牌卡片组件 |
-| `CountdownLabel.swift` | 下次刷新倒计时标签 |
-| `PlanTag.swift` | 套餐徽章（黑色圆角背景 + 白色大写加粗文字） |
+| 文件                    | 职责                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `UBDesignTokens.swift`  | `UB.Radius`（card/bar）、`UB.Font`（各场景字体）、`UB.Canvas`（背景/卡片/分隔线颜色） |
+| `AppIconSquircle.swift` | 圆角方形图标（异步加载 + `NSCache` 内存缓存）                                         |
+| `BrandTile.swift`       | 品牌卡片组件                                                                          |
+| `CountdownLabel.swift`  | 下次刷新倒计时标签                                                                    |
+| `PlanTag.swift`         | 套餐徽章（黑色圆角背景 + 白色大写加粗文字）                                           |
 
 规范：
 
@@ -421,13 +421,14 @@ PluginConfiguration
 ```
 UsageBoardStore.init()
   1. ConfigStore.loadOrCreate()           // 加载或创建配置
-  2. BundledPluginInstaller.installIfNeeded()  // 安装内置插件符号链接
-  3. reloadAllMetadata()                  // 重新解析所有插件元数据
-  4. ConfigStore.save()                   // 持久化更新后的配置
-  5. rebuildSnapshots()                   // 构建初始快照（idle 状态）
-  6. loadCachedStates()                   // 从磁盘缓存恢复上次数据
-  7. startSchedulers()                    // 为已启用插件启动定时刷新
-  8. observeSystemActivity()              // 监听系统睡眠/唤醒
+  2. ConfigStore.save()                   // 立即回写，持久化新生成的 stateID
+  3. BundledPluginInstaller.installIfNeeded()  // 安装内置插件符号链接
+  4. reloadAllMetadata()                  // 重新解析所有插件元数据
+  5. ConfigStore.save()                   // 持久化更新后的配置
+  6. rebuildSnapshots()                   // 构建初始快照（idle 状态）
+  7. loadCachedStates()                   // 从缓存恢复上次数据
+  8. startSchedulers()                    // 为已启用插件启动定时刷新
+  9. observeSystemActivity()              // 监听系统睡眠/唤醒
 ```
 
 ---
@@ -467,7 +468,7 @@ UsageBoardStore.init()
 ### 9.3 错误输出
 
 ```json
-{"error": "API Key 无效"}
+{ "error": "API Key 无效" }
 ```
 
 ### 9.4 元数据注释块
@@ -502,36 +503,36 @@ UsageBoardStore.init()
 
 当前测试覆盖（`Tests/UsageBoardTests/`）：
 
-| 测试 | 覆盖 |
-|------|------|
-| `testConfigurationDecodesDefaultsAndSaves` | 配置编解码和默认值 |
-| `testPluginsDirectoryIsNextToConfigurationFile` | 目录路径计算 |
-| `testPluginStateStoreSavesAndClampsRefreshInterval` | 缓存读写和刷新间隔 |
-| `testBundledPluginInstaller*` | 符号链接安装和替换 |
-| `testPluginOutputDecodes*` | PluginOutput 解码（含小数秒日期、chart） |
-| `testPluginExecutor*` | 执行器超时、错误 JSON、大 stdout、UTF-8 环境 |
-| `testProgressHandlesBoundsAndRatio` | UsageItem.progress 和格式化 |
-| `testResetTextShowsStaticDateTime` | 重置时间文案 |
-| `testPluginMetadataParserReadsCommentBlock` | 元数据解析 |
-| `testDuplicatePluginNamesGetNumbered` | 显示名去重 |
-| `testUpdateVersionComparison` | 版本号比较 |
+当前测试均在 `Tests/UsageBoardTests/UsageBoardTests.swift`，按覆盖领域归类：
+
+| 领域              | 测试                                                                                                                                        | 覆盖                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 配置 / 路径       | `testConfigurationDecodesDefaultsAndSaves`、`testPluginsDirectoryIsNextToConfigurationFile`                                                 | 配置编解码与默认值、插件目录路径计算                                                                          |
+| 状态缓存          | `testPluginStateStoreSavesAndClampsRefreshInterval`、`testPluginStateStoreCacheHitsAfterDiskDelete`                                         | 磁盘读写与刷新间隔下限、磁盘文件删除后内存缓存仍命中                                                          |
+| 内置插件安装      | `testBundledPluginInstaller*`                                                                                                               | 符号链接安装与失效链接替换                                                                                    |
+| PluginOutput 解码 | `testPluginOutputDecodes*`                                                                                                                  | items/进度格式化、小数秒日期、chart 解码与缓存往返                                                            |
+| 插件执行器        | `testPluginExecutor*`、`testPluginParameterValuesBecomeArguments`                                                                           | chart 传播、非法/错误 JSON、解码路径定位、UTF-8 环境、超大 stdout 防 pipe 死锁、`--usageboard-param` 参数拼装 |
+| 元数据解析        | `testPluginMetadataParserReadsCommentBlock`、`testGLMPluginMetadataUsesStatPeriodWithoutProvider`、`testCodexPluginMetadataReadsParameters` | 注释块解析与多语言、内置插件实际元数据                                                                        |
+| 用量模型          | `testProgressHandlesBoundsAndRatio`、`testResetTextShowsStaticDateTime`                                                                     | `progress` 边界与格式化、重置时间文案                                                                         |
+| 显示名            | `testDuplicatePluginNamesGetNumbered`、`testLocalizedPluginDisplayNamesUseMetadataUnlessUserCustomized`                                     | 同名去重、本地化名优先于用户自定义判定                                                                        |
+| 更新              | `testUpdateVersionComparison`                                                                                                               | 语义版本号比较                                                                                                |
 
 ### 11.2 Python 插件测试
 
 `Tests/PluginTests/` 使用 pytest，通过 `importlib.util` 加载插件模块并 mock 网络调用：
 
-- 各插件对应一个 `test_<name>_plugin.py`。
+- 多数插件对应一个 `test_<name>_plugin.py`（claude/codex/deepseek/glm/minimax）；另有跨插件的 `test_bundled_plugin_interpreters.py`（多解释器兼容性）和 `test_plugin_error_classification.py`（`_common` HTTP/URL 异常分类）。
 - 测试中需先将插件目录插入 `sys.path` 以找到 `_common.py`。
 - 使用多解释器（系统 Python + Homebrew Python）交叉验证兼容性。
 
 ### 11.3 变更对应验证
 
-| 改动范围 | 验证方式 |
-|----------|----------|
-| Core 模型、解析、执行器、更新逻辑 | `swift test` |
-| SwiftUI/AppKit UI | `swift build`；重要交互用 `bash scripts/build.sh` 手动检查 |
-| 内置插件或 `_common.py` | `python3 -m pytest Tests/PluginTests/ -v`；需 `bash scripts/build.sh` 重建才能在 app 生效 |
-| 文档 | `git diff --check` |
+| 改动范围                          | 验证方式                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| Core 模型、解析、执行器、更新逻辑 | `swift test`                                                                              |
+| SwiftUI/AppKit UI                 | `swift build`；重要交互用 `bash scripts/build.sh` 手动检查                                |
+| 内置插件或 `_common.py`           | `python3 -m pytest Tests/PluginTests/ -v`；需 `bash scripts/build.sh` 重建才能在 app 生效 |
+| 文档                              | `git diff --check`                                                                        |
 
 ---
 
@@ -545,16 +546,16 @@ UsageBoardStore.init()
 
 ## 13. 新功能落点指南
 
-| 需求类型 | 首选落点 |
-|----------|----------|
-| 新插件 | `Resources/BundledPlugins/` + `Tests/PluginTests/` + `_common.py` 复用 |
-| 新 Model 字段 | `Models.swift` → 确认 Codable 兼容 → 更新测试 |
-| 新 UI 组件 | `DesignSystem/` |
-| 新设置项 | `SettingsView.swift` 对应 section + `AppLocalization` 文案 |
-| 新 Store 能力 | `UsageBoardStore.swift` 方法 + 确认 `@Published` 对 View 的影响 |
-| 新参数类型 | `PluginParameterType` 枚举 + `PluginParameterField` 渲染 + 插件元数据文档 |
-| 新展示样式 | `UsageDisplayStyle` 枚举 + `UsageItem.displayValue()` + `UsageItemRow` 渲染 |
-| 新图表类型 | `PluginChart.kind` + `DashboardView` 中新建图表视图 |
+| 需求类型      | 首选落点                                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 新插件        | `Resources/BundledPlugins/` + `Tests/PluginTests/` + `_common.py` 复用                                                       |
+| 新 Model 字段 | 对应模型文件（`AppConfiguration` / `PluginConfiguration` / `PluginOutput` / `PluginSnapshot`）→ 确认 Codable 兼容 → 更新测试 |
+| 新 UI 组件    | `DesignSystem/`                                                                                                              |
+| 新设置项      | `SettingsView.swift` 对应 section + `AppLocalization` 文案                                                                   |
+| 新 Store 能力 | `UsageBoardStore.swift` 方法 + 确认 `@Published` 对 View 的影响                                                              |
+| 新参数类型    | `PluginParameterType` 枚举 + `PluginParameterField` 渲染 + 插件元数据文档                                                    |
+| 新展示样式    | `UsageDisplayStyle` 枚举 + `UsageItem.displayValue()` + `UsageItemRow` 渲染                                                  |
+| 新图表类型    | `PluginChart.kind` + `DashboardView` 中新建图表视图                                                                          |
 
 ---
 
