@@ -24,6 +24,10 @@ let package = Package(
             name: "UsageBoardTests",
             dependencies: ["UsageBoardCore"]
         ),
+        .testTarget(
+            name: "UsageBoardAppTests",
+            dependencies: ["UsageBoardApp"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

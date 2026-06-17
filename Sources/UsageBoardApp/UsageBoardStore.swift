@@ -468,12 +468,26 @@ final class UsageBoardStore: ObservableObject {
                     if self.isSystemActive, self.isPluginReadyToRun(current) {
                         self.refresh(pluginID: id, force: true)
                     }
-                    let target = self.nextRefreshAt[id]
-                    let delay = target.map { max(0, $0.timeIntervalSince(Date())) } ?? TimeInterval(interval)
+                    let delay = self.nextSchedulerDelay(pluginID: id, interval: interval)
                     try? await Task.sleep(for: .seconds(delay))
                 }
             }
         }
+    }
+
+    private func nextSchedulerDelay(pluginID: UUID, interval: Int, now: Date = Date()) -> TimeInterval {
+        let interval = TimeInterval(max(interval, 5))
+        guard let target = nextRefreshAt[pluginID] else {
+            nextRefreshAt[pluginID] = now.addingTimeInterval(interval)
+            return interval
+        }
+
+        let delay = target.timeIntervalSince(now)
+        guard delay > 0 else {
+            nextRefreshAt[pluginID] = now.addingTimeInterval(interval)
+            return interval
+        }
+        return delay
     }
 
     private func scheduledRefreshDate(updatedAt: Date?, interval: Int, now: Date = Date()) -> Date {
