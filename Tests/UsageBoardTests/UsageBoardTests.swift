@@ -67,6 +67,25 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertEqual(loaded?.items.first?.name, "B")
     }
 
+    func testPluginStateStoreKeepsMalformedStateIDInsideStatesDirectory() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usageboard-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("states", isDirectory: true)
+        let store = PluginStateStore(directoryURL: directory)
+        let state = PluginCachedState(
+            updatedAt: Date(),
+            items: [UsageItem(id: "c", name: "C", used: 1, limit: 2, displayStyle: .ratio)]
+        )
+
+        try store.save(stateID: "../outside", state: state)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("outside.json").path))
+        XCTAssertNotNil(store.load(stateID: "../outside"))
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files.first?.deletingPathExtension().lastPathComponent, ".._outside")
+    }
+
     func testBundledPluginInstallerCreatesSymlinks() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("usageboard-\(UUID().uuidString)", isDirectory: true)

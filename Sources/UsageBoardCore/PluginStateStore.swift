@@ -27,7 +27,7 @@ public struct PluginStateStore: Sendable {
 
     public func load(stateID: String) -> PluginCachedState? {
         if let cached = cache.get(stateID) { return cached }
-        let fileURL = directoryURL.appendingPathComponent("\(stateID).json")
+        let fileURL = fileURL(for: stateID)
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         guard let state = try? UsageBoardJSON.decoder().decode(PluginCachedState.self, from: data) else { return nil }
         cache.set(stateID, state)
@@ -37,7 +37,7 @@ public struct PluginStateStore: Sendable {
     public func save(stateID: String, state: PluginCachedState) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        let fileURL = directoryURL.appendingPathComponent("\(stateID).json")
+        let fileURL = fileURL(for: stateID)
         let data = try UsageBoardJSON.encoder().encode(state)
         try data.write(to: fileURL, options: [.atomic])
         cache.set(stateID, state)
@@ -47,5 +47,18 @@ public struct PluginStateStore: Sendable {
         guard let cached = load(stateID: stateID) else { return true }
         let interval = max(intervalSeconds, 5)
         return Date().timeIntervalSince(cached.updatedAt) > Double(interval)
+    }
+
+    private func fileURL(for stateID: String) -> URL {
+        directoryURL.appendingPathComponent("\(safeFileStem(for: stateID)).json")
+    }
+
+    private func safeFileStem(for stateID: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let sanitizedScalars = stateID.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        let sanitized = String(sanitizedScalars)
+        return sanitized.isEmpty ? "_" : sanitized
     }
 }
