@@ -202,6 +202,40 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
             )
 
 
+class TestMaintainCacheRecovery(unittest.TestCase):
+    def test_invalid_last_date_rebuilds_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, plugin.CACHE_FILENAME)
+            with open(cache_path, "w") as f:
+                json.dump({"version": plugin.CACHE_VERSION, "last_date": "bad-date", "days": {}}, f)
+
+            result = plugin.maintain_cache(tmp)
+
+        self.assertIsInstance(result, dict)
+
+    def test_invalid_cached_day_key_is_skipped(self):
+        today = plugin._parse_date(plugin.local_today())
+        yesterday = today - timedelta(days=1)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin.save_stats_cache(tmp, {
+                "version": plugin.CACHE_VERSION,
+                "last_date": plugin._format_date(today),
+                "days": {
+                    "bad-date": {"stale": {"input": 1, "output": 0, "cache_creation": 0, "cache_read": 0}},
+                    plugin._format_date(yesterday): {"old-model": {"input": 2, "output": 0, "cache_creation": 0, "cache_read": 0}},
+                },
+            })
+
+            result = plugin.maintain_cache(tmp)
+
+        self.assertNotIn("bad-date", result)
+        self.assertEqual(
+            result.get(plugin._format_date(yesterday)),
+            {"old-model": {"input": 2, "output": 0, "cache_creation": 0, "cache_read": 0}},
+        )
+
+
 class TestComputeTokens(unittest.TestCase):
     """compute_tokens supports both billing-weighted and actual modes."""
 

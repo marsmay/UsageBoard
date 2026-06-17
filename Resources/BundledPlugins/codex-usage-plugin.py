@@ -272,7 +272,10 @@ def maintain_chart_cache(data_dir: str, language: str) -> dict[str, dict[str, fl
     if cache is None:
         return full_scan_and_save()
 
-    last_date = _parse_date(cache.get("last_date", "2000-01-01"))
+    try:
+        last_date = _parse_date(cache.get("last_date", "2000-01-01"))
+    except (TypeError, ValueError):
+        return full_scan_and_save()
     gap_days = (today - last_date).days
 
     if gap_days < 0 or gap_days > 30:
@@ -291,8 +294,11 @@ def maintain_chart_cache(data_dir: str, language: str) -> dict[str, dict[str, fl
 
     merged = {}
     for d, v in cache.get("days", {}).items():
-        parsed = _parse_date(d)
-        if cutoff <= parsed < scan_start:
+        try:
+            parsed = _parse_date(d)
+        except (TypeError, ValueError):
+            continue
+        if cutoff <= parsed < scan_start and isinstance(v, dict):
             merged[d] = v
 
     for i in range(day_count):
