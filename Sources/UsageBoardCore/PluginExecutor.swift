@@ -1,4 +1,5 @@
 @preconcurrency import Foundation
+import Darwin
 
 private final class DataBuffer: @unchecked Sendable {
     private var data = Data()
@@ -87,7 +88,10 @@ public struct PluginExecutor: Sendable {
         let finished = exitSemaphore.wait(timeout: .now() + timeoutSeconds) == .success
         if !finished {
             process.terminate()
-            _ = exitSemaphore.wait(timeout: .now() + 1.0)
+            if exitSemaphore.wait(timeout: .now() + 1.0) != .success {
+                Darwin.kill(process.processIdentifier, SIGKILL)
+                _ = exitSemaphore.wait(timeout: .now() + 1.0)
+            }
         }
 
         // Wait briefly for readability handlers to drain remaining buffered data after EOF.

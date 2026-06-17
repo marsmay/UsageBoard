@@ -67,7 +67,9 @@ final class UsageBoardStore: ObservableObject {
                 : "内置插件安装失败：\(error.localizedDescription)"
         }
         reloadAllMetadata()
-        try? configStore.save(configuration)
+        if didLoadConfiguration {
+            try? configStore.save(configuration)
+        }
         rebuildSnapshots()
         loadCachedStates()
         startSchedulers()
@@ -194,16 +196,18 @@ final class UsageBoardStore: ObservableObject {
 
         configuration.plugins[index].enabled = true
         lastError = nil
-        saveConfiguration()
-
+        rebuildSnapshots()
+        let enabledPlugin = configuration.plugins[index]
         snapshots[id] = makeSnapshot(
-            for: plugin,
+            for: enabledPlugin,
             state: .loading,
             items: snapshots[plugin.id]?.items ?? [],
             updatedAt: snapshots[plugin.id]?.updatedAt,
             chart: snapshots[plugin.id]?.chart
         )
         refresh(pluginID: id, force: true)
+        startSchedulers()
+        persistConfiguration()
     }
 
     func reloadMetadata(pluginID: UUID) {
@@ -260,6 +264,9 @@ final class UsageBoardStore: ObservableObject {
         }
         let refreshInterval = max(plugin.refreshIntervalSeconds, 5)
         if !force {
+            if inflightRefreshTasks[plugin.id] != nil {
+                return
+            }
             if let updatedAt = snapshots[plugin.id]?.updatedAt,
                Date().timeIntervalSince(updatedAt) <= Double(refreshInterval) {
                 return
@@ -466,7 +473,7 @@ final class UsageBoardStore: ObservableObject {
                     guard let current = self.configuration.plugins.first(where: { $0.id == id }),
                           current.enabled else { return }
                     if self.isSystemActive, self.isPluginReadyToRun(current) {
-                        self.refresh(pluginID: id, force: true)
+                        self.refresh(pluginID: id)
                     }
                     let delay = self.nextSchedulerDelay(pluginID: id, interval: interval)
                     try? await Task.sleep(for: .seconds(delay))

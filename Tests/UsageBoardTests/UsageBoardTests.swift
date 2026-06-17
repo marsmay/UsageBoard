@@ -1,4 +1,5 @@
 @preconcurrency import Foundation
+import Darwin
 #if canImport(XCTest)
 import XCTest
 @testable import UsageBoardCore
@@ -515,6 +516,38 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertEqual(snapshot.badge, "utf-8|en_US.UTF-8|en_US.UTF-8|utf-8")
     }
 
+    func testPluginExecutorKillsTimedOutProcessThatIgnoresTermination() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usageboard-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let pidURL = dir.appendingPathComponent("ignored-term.pid")
+        let script = dir.appendingPathComponent("ignored-term.py")
+        try """
+        import os, signal, time
+
+        signal.signal(signal.SIGTERM, lambda signum, frame: None)
+        with open("\(pidURL.path)", "w", encoding="utf-8") as handle:
+            handle.write(str(os.getpid()))
+            handle.flush()
+
+        while True:
+            time.sleep(1)
+        """.write(to: script, atomically: true, encoding: .utf8)
+
+        let config = PluginConfiguration(name: "Ignored Term", executablePath: script.path)
+        let snapshot = PluginExecutor(timeoutSeconds: 0.2).run(configuration: config, displayName: "Ignored Term", language: .zhHans)
+        let pidText = try String(contentsOf: pidURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        let pid = try XCTUnwrap(pid_t(pidText))
+        defer { Darwin.kill(pid, SIGKILL) }
+
+        guard case .failed(let message) = snapshot.state else {
+            XCTFail("Expected .failed, got \(snapshot.state)")
+            return
+        }
+        XCTAssertEqual(message, "插件执行超时")
+        XCTAssertFalse(isProcessRunning(pid), "Timed-out plugin process should not keep running")
+    }
+
     func testPluginExecutorHandlesLargeStdout() throws {
         // Regression test for pipe-buffer deadlock: stdout > 16KB used to hang
         // until 15s timeout because pipe was only drained after wait().
@@ -559,6 +592,13 @@ final class UsageBoardTests: XCTestCase {
         }
         XCTAssertEqual(message, "API Key 无效，请检查配置")
         XCTAssertTrue(snapshot.items.isEmpty)
+    }
+
+    private func isProcessRunning(_ pid: pid_t) -> Bool {
+        if Darwin.kill(pid, 0) == 0 {
+            return true
+        }
+        return errno != ESRCH
     }
 }
 #else
