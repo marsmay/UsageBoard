@@ -110,6 +110,23 @@ class TestFailureFormat(unittest.TestCase):
         self.assertNotIn("items", output)
 
 
+class TestFetchOauthUsageErrors(unittest.TestCase):
+    def test_timeout_error_returns_timeout_code(self):
+        with patch.object(plugin.urllib_request, "urlopen", side_effect=TimeoutError):
+            data, code = plugin.fetch_oauth_usage("token")
+
+        self.assertIsNone(data)
+        self.assertEqual(code, plugin.REQUEST_TIMEOUT)
+
+    def test_url_error_returns_network_error_code(self):
+        error = plugin.urllib.error.URLError("offline")
+        with patch.object(plugin.urllib_request, "urlopen", side_effect=error):
+            data, code = plugin.fetch_oauth_usage("token")
+
+        self.assertIsNone(data)
+        self.assertEqual(code, plugin.NETWORK_ERROR)
+
+
 class TestBuildItemsFromOauth(unittest.TestCase):
     """OAuth usage payload should produce UsageBoard items for five_hour and seven_day."""
 

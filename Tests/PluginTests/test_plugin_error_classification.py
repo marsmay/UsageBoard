@@ -129,6 +129,44 @@ class TestBundledPluginErrorClassification(unittest.TestCase):
 
         self.assert_usage_parse_failed(output)
 
+    def test_claude_oauth_timeout_is_reported_as_timeout(self):
+        plugin = load_plugin("claude-usage-plugin.py", "claude_timeout_classification")
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            with patch.object(plugin, "load_oauth_token", return_value="token"):
+                with patch.object(plugin, "fetch_oauth_usage", return_value=(None, plugin.REQUEST_TIMEOUT)):
+                    output = run_main(
+                        plugin,
+                        [
+                            "claude-usage-plugin.py",
+                            "--usageboard-param",
+                            f"DATA_DIR={data_dir}",
+                            "--usageboard-param",
+                            "USAGEBOARD_LANGUAGE=zh-Hans",
+                        ],
+                    )
+
+        self.assertEqual(output, {"error": "请求超时，请检查网络"})
+
+    def test_claude_oauth_network_error_is_not_reported_as_http_none(self):
+        plugin = load_plugin("claude-usage-plugin.py", "claude_network_classification")
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            with patch.object(plugin, "load_oauth_token", return_value="token"):
+                with patch.object(plugin, "fetch_oauth_usage", return_value=(None, plugin.NETWORK_ERROR)):
+                    output = run_main(
+                        plugin,
+                        [
+                            "claude-usage-plugin.py",
+                            "--usageboard-param",
+                            f"DATA_DIR={data_dir}",
+                            "--usageboard-param",
+                            "USAGEBOARD_LANGUAGE=zh-Hans",
+                        ],
+                    )
+
+        self.assertEqual(output, {"error": "网络连接失败，请检查网络"})
+
 
 if __name__ == "__main__":
     unittest.main()

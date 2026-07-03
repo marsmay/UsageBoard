@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -25,12 +26,16 @@ def available_interpreters():
             yield interpreter
 
 
-def plugin_environment(interpreter: Path) -> dict[str, str]:
+def plugin_environment(interpreter: Path, home_dir: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.update({
+        "HOME": str(home_dir),
+        "PATH": str(home_dir / "bin"),
         "PYTHONIOENCODING": "utf-8",
         "LANG": "en_US.UTF-8",
         "LC_ALL": "en_US.UTF-8",
+        "XDG_CACHE_HOME": str(home_dir / ".cache"),
+        "XDG_CONFIG_HOME": str(home_dir / ".config"),
     })
     if HOMEBREW_PYTHON is not None and interpreter == HOMEBREW_PYTHON:
         env.update({
@@ -53,14 +58,17 @@ class TestBundledPluginInterpreterCompatibility(unittest.TestCase):
         for interpreter in interpreters:
             for plugin in plugins:
                 with self.subTest(interpreter=str(interpreter), plugin=plugin.name):
-                    result = subprocess.run(
-                        [str(interpreter), str(plugin)],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        env=plugin_environment(interpreter),
-                    )
+                    with tempfile.TemporaryDirectory() as home:
+                        home_dir = Path(home)
+                        (home_dir / "bin").mkdir()
+                        result = subprocess.run(
+                            [str(interpreter), str(plugin)],
+                            check=False,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            env=plugin_environment(interpreter, home_dir),
+                        )
                     self.assertEqual(result.returncode, 0, result.stderr)
                     output = json.loads(result.stdout)
                     self.assertIn("error", output)

@@ -79,6 +79,7 @@ import os
 import sys
 import glob
 import subprocess
+import urllib.error
 from datetime import datetime, timezone, timedelta
 from urllib import request as urllib_request
 
@@ -98,6 +99,8 @@ from _common import (  # noqa: E402
 CACHE_VERSION = 3
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 PARSE_ERROR = "parse_error"
+REQUEST_TIMEOUT = "request_timeout"
+NETWORK_ERROR = "network_error"
 
 def status_for(pct):
     if pct >= 90: return "critical"
@@ -174,8 +177,14 @@ def fetch_oauth_usage(token):
         return None, e.code
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None, PARSE_ERROR
+    except TimeoutError:
+        return None, REQUEST_TIMEOUT
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, TimeoutError):
+            return None, REQUEST_TIMEOUT
+        return None, NETWORK_ERROR
     except Exception:
-        return None, None
+        return None, NETWORK_ERROR
 
 def build_items_from_oauth(data, lang, translate):
     fh = data.get("five_hour", {})
@@ -431,6 +440,10 @@ def main():
             failure(translate(lang, "api_401", code=http_code))
         elif http_code == PARSE_ERROR:
             failure(translate(lang, "usage_parse_failed"))
+        elif http_code == REQUEST_TIMEOUT:
+            failure(translate(lang, "request_timeout"))
+        elif http_code == NETWORK_ERROR:
+            failure(translate(lang, "network_error"))
         elif isinstance(http_code, int) and http_code >= 500:
             failure(translate(lang, "api_5xx", code=http_code))
         else:
