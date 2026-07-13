@@ -360,11 +360,28 @@ def collect_session_files(data_dir: str, start_date, end_date) -> list[str]:
         files.extend(glob.glob(pattern, recursive=True))
     start_str = start_date.strftime("%Y-%m-%d") if isinstance(start_date, datetime) else str(start_date)
     end_str = end_date.strftime("%Y-%m-%d") if isinstance(end_date, datetime) else str(end_date)
+    # A session file is named after its start date, but entries written after
+    # local midnight carry the next day's timestamp. Include any file modified on
+    # or after start_date (by mtime) so a session that spans midnight is not
+    # dropped when its filename date falls before the incremental scan range.
+    # Bucketing in parse_sessions_for_chart is authoritative, so extra files
+    # never cause double counting.
+    try:
+        start_mtime: float | None = datetime.combine(_parse_date(start_str), time.min).timestamp()
+    except (TypeError, ValueError):
+        start_mtime = None
     result: list[str] = []
     for f in files:
         file_date = parse_date_from_filename(f)
         if file_date and start_str <= file_date <= end_str:
             result.append(f)
+            continue
+        if start_mtime is not None:
+            try:
+                if os.path.getmtime(f) >= start_mtime:
+                    result.append(f)
+            except OSError:
+                pass
     return result
 
 

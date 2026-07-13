@@ -2,9 +2,11 @@
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
+from datetime import date, datetime, time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -113,6 +115,48 @@ class TestBuildItems(unittest.TestCase):
         self.assertEqual([item["id"] for item in items], ["codex-weekly"])
         self.assertEqual(items[0]["name"], "周用量")
         self.assertEqual(items[0]["used"], 0)
+
+
+class TestCollectSessionFiles(unittest.TestCase):
+    """A session file is named after its start date, but entries written after
+    local midnight belong to the next day. Incremental scans keyed by the next
+    day must still pick up such files, or that day's tokens are undercounted."""
+
+    def _make_session(self, sessions_dir, filename, mtime_date):
+        path = os.path.join(sessions_dir, filename)
+        open(path, "w", encoding="utf-8").close()
+        ts = datetime.combine(mtime_date, time(0, 30)).timestamp()
+        os.utime(path, (ts, ts))
+        return os.path.basename(path)
+
+    def test_cross_midnight_file_included_by_mtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions = os.path.join(tmp, "sessions")
+            os.makedirs(sessions)
+            # Named 07-12 but last modified on 07-13 (session spanned midnight).
+            cross = self._make_session(sessions, "rollout-2026-07-12T23-50-00-a.jsonl", date(2026, 7, 13))
+            # Same-day file.
+            same = self._make_session(sessions, "rollout-2026-07-13T09-00-00-c.jsonl", date(2026, 7, 13))
+            # Stale file: old name and never touched since — must stay excluded.
+            self._make_session(sessions, "rollout-2026-07-01T10-00-00-b.jsonl", date(2026, 7, 1))
+
+            collected = {os.path.basename(f) for f in plugin.collect_session_files(tmp, date(2026, 7, 13), date(2026, 7, 13))}
+
+        self.assertIn(cross, collected)
+        self.assertIn(same, collected)
+        self.assertEqual(len(collected), 2)
+
+    def test_full_range_uses_filename_dates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions = os.path.join(tmp, "sessions")
+            os.makedirs(sessions)
+            a = self._make_session(sessions, "rollout-2026-07-12T23-50-00-a.jsonl", date(2026, 7, 13))
+            b = self._make_session(sessions, "rollout-2026-07-01T10-00-00-b.jsonl", date(2026, 7, 1))
+            c = self._make_session(sessions, "rollout-2026-07-13T09-00-00-c.jsonl", date(2026, 7, 13))
+
+            collected = {os.path.basename(f) for f in plugin.collect_session_files(tmp, date(2026, 6, 14), date(2026, 7, 13))}
+
+        self.assertEqual(collected, {a, b, c})
 
 
 class TestChartCacheRecovery(unittest.TestCase):
