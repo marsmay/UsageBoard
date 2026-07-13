@@ -94,6 +94,26 @@ class TestBuildItems(unittest.TestCase):
         self.assertEqual(items[1]["name"], "周用量")
         self.assertEqual(items[1]["used"], 40)
 
+    def test_build_items_classifies_single_primary_weekly_window_by_duration(self):
+        payload = {
+            "plan_type": "team",
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 0,
+                    "limit_window_seconds": 7 * 24 * 60 * 60,
+                    "reset_at": 1_800_000_000,
+                },
+                "secondary_window": None,
+            },
+        }
+
+        items, badge = plugin.build_items(payload, "zh-Hans")
+
+        self.assertEqual(badge, "team")
+        self.assertEqual([item["id"] for item in items], ["codex-weekly"])
+        self.assertEqual(items[0]["name"], "周用量")
+        self.assertEqual(items[0]["used"], 0)
+
 
 class TestChartCacheRecovery(unittest.TestCase):
     def _empty_chart(self, _files, buckets, bucket_unit, _period, _language):

@@ -459,6 +459,14 @@ def parse_window(data: dict[str, Any], *keys: str) -> dict[str, Any] | None:
     return None
 
 
+def get_window_duration_seconds(window: dict[str, Any]) -> int | None:
+    value = window.get("limit_window_seconds")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def build_items(payload: dict[str, Any], language: str) -> tuple[list[dict[str, Any]], str | None]:
     rate_limits = parse_window(payload, "rate_limit", "rate_limits")
     if not rate_limits:
@@ -473,10 +481,21 @@ def build_items(payload: dict[str, Any], language: str) -> tuple[list[dict[str, 
     five_hour = parse_window(rate_limits, "five_hour", "five_hour_limit", "five_hour_rate_limit", "primary")
     weekly = parse_window(rate_limits, "weekly", "weekly_limit", "weekly_rate_limit", "secondary")
 
-    if not five_hour:
-        five_hour = parse_window(rate_limits, "primary_window")
-    if not weekly:
-        weekly = parse_window(rate_limits, "secondary_window")
+    primary_window = parse_window(rate_limits, "primary_window")
+    secondary_window = parse_window(rate_limits, "secondary_window")
+    for window in (primary_window, secondary_window):
+        if not window:
+            continue
+        duration = get_window_duration_seconds(window)
+        if duration == 5 * 60 * 60 and not five_hour:
+            five_hour = window
+        elif duration == 7 * 24 * 60 * 60 and not weekly:
+            weekly = window
+
+    if not five_hour and primary_window is not weekly:
+        five_hour = primary_window
+    if not weekly and secondary_window is not five_hour:
+        weekly = secondary_window
 
     if five_hour:
         pct = get_percent_left(five_hour)
