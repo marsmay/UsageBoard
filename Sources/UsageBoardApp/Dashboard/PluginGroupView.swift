@@ -101,7 +101,7 @@ struct PluginGroupView: View {
                 .font(UB.Font.cardTitle)
                 .lineLimit(1)
             if let badge = snapshot.badge {
-                PlanTag(text: badge)
+                PlanTag(text: badge, colorName: snapshot.badgeColor)
             }
             if case .failed = snapshot.state {
                 Text(strings.text(.errorBadge))

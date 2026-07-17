@@ -117,12 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         settingsWindowController = nil
 
         let settingsView = SettingsView(store: store)
-            .frame(minWidth: 800, minHeight: 480)
+            .frame(minWidth: 900, minHeight: 480)
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = AppLocalization.shared.text(.settingsWindowTitle)
-        window.setContentSize(NSSize(width: 800, height: 520))
-        window.minSize = NSSize(width: 800, height: 480)
+        window.setContentSize(NSSize(width: 900, height: 520))
+        window.minSize = NSSize(width: 900, height: 480)
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false

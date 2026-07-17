@@ -120,6 +120,7 @@ public struct PluginExecutor: Sendable {
                 items: pluginOutput.items,
                 updatedAt: pluginOutput.updatedAt,
                 badge: pluginOutput.badge,
+                badgeColor: pluginOutput.badgeColor,
                 iconURL: configuration.metadata?.icon,
                 chart: pluginOutput.chart
             )

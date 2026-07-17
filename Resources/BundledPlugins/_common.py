@@ -71,12 +71,14 @@ def utc_now_iso() -> str:
 
 # ─── Output ─────────────────────────────────────────────────────────────────────
 
-def success(items: list[dict[str, Any]], badge: str | None = None, chart: dict[str, Any] | None = None) -> int:
+def success(items: list[dict[str, Any]], badge: str | None = None, chart: dict[str, Any] | None = None, badgeColor: str | None = None) -> int:
     result: dict[str, Any] = {"schemaVersion": SCHEMA_VERSION, "updatedAt": utc_now_iso(), "items": items}
     if badge:
         result["badge"] = badge
     if chart:
         result["chart"] = chart
+    if badgeColor:
+        result["badgeColor"] = badgeColor
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

@@ -60,6 +60,7 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
 | Codex | `codex-usage-plugin.py` | Query OpenAI Codex CLI usage and stats |
 | MiniMax | `minimax-usage-plugin.py` | Query MiniMax Coding Plan usage |
 | DeepSeek | `deepseek-usage-plugin.py` | Query DeepSeek account balance |
+| Kimi | `kimi-usage-plugin.py` | Query Kimi Code usage |
 | Tavily | `tavily-usage-plugin.py` | Query Tavily Search monthly usage |
 
 Bundled plugin source files are in [Resources/BundledPlugins](Resources/BundledPlugins). After packaging, they reside in the app bundle at `Contents/Resources/Plugins/`.
@@ -290,7 +291,8 @@ Field descriptions:
 - `items[].resetAt`: Optional reset time, ISO 8601 format.
 - `items[].status`: `normal`, `warning`, `critical`, or `unknown`.
 - `items[].color`: Optional progress bar color. Supports `blue`, `yellow`, `orange`, `red`, `green`; defaults to blue.
-- `badge`: Optional string displayed in a black rounded badge next to the plugin card title (white uppercase bold text).
+- `badge`: Optional string displayed in a rounded badge next to the plugin card title (white uppercase bold text).
+- `badgeColor`: Optional string, badge color. Supports `blue`, `orange`, `gray`, `indigo`, `purple`, `teal`, `green`, `red`, `yellow`; falls back to a text-based preset (e.g. PRO/MAX) when absent.
 - `chart`: Optional token usage chart. Currently supports `kind: "line"`.
 - `chart.period`: Stats period identifier, e.g. `7d`, `15d`, `30d`.
 - `chart.bucketUnit`: Time bucket unit, supports `hour` or `day`.
@@ -298,7 +300,7 @@ Field descriptions:
 - `chart.message`: Optional message shown when stats data is empty or unavailable.
 - `error`: Optional top-level error message. When present and non-empty, the run is treated as failed and the text is shown in the card body.
 
-The bundled Zhipu, Claude, and Codex plugins provide a `STAT_PERIOD` parameter supporting `7d`, `15d`, and `30d`. The Zhipu plugin uses the domestic API endpoint and is compatible with both Zhipu and ZAI Coding Plan keys. The Claude plugin fetches subscription usage via OAuth API; its `PLAN` parameter supports a `none` option that skips the API call and returns only local JSONL stats. It also supports a `CLAUDE_ONLY` toggle to filter third-party models and can use `DATA_DIR` to point at the `~/.claude` data directory. The Codex plugin uses the `DATA_DIR` parameter to specify the data directory (default `~/.codex`), reads `auth.json` for authentication, and parses session files to generate token stats. Both Claude and Codex plugins use an incremental caching strategy stored in the data directory and re-scan today's data on every run. The DeepSeek plugin provides a `LIMIT` parameter for the displayed balance limit and colors the progress bar by the balance-to-limit ratio.
+The bundled Zhipu, Claude, and Codex plugins provide a `STAT_PERIOD` parameter supporting `7d`, `15d`, and `30d`. The Zhipu plugin uses the domestic API endpoint and is compatible with both Zhipu and ZAI Coding Plan keys. The Claude plugin fetches subscription usage via OAuth API; its `PLAN` parameter supports a `none` option that skips the API call and returns only local JSONL stats. It also supports a `CLAUDE_ONLY` toggle to filter third-party models and can use `DATA_DIR` to point at the `~/.claude` data directory. The Codex plugin uses the `DATA_DIR` parameter to specify the data directory (default `~/.codex`), reads `auth.json` for authentication, and parses session files to generate token stats. Both Claude and Codex plugins use an incremental caching strategy stored in the data directory and re-scan today's data on every run. The DeepSeek plugin provides a `LIMIT` parameter for the displayed balance limit and colors the progress bar by the balance-to-limit ratio. The Kimi plugin queries Kimi Code's 5-hour rolling window and weekly usage, and its `PLAN` parameter can manually set the subscription plan, overriding the plan returned by the API.
 
 ## Installation
 

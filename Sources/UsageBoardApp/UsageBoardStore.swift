@@ -279,6 +279,7 @@ final class UsageBoardStore: ObservableObject {
             items: snapshots[plugin.id]?.items ?? [],
             updatedAt: snapshots[plugin.id]?.updatedAt,
             badge: snapshots[plugin.id]?.badge,
+            badgeColor: snapshots[plugin.id]?.badgeColor,
             chart: snapshots[plugin.id]?.chart
         )
 
@@ -308,6 +309,7 @@ final class UsageBoardStore: ObservableObject {
                     updatedAt: updatedAt,
                     items: snapshot.items,
                     badge: snapshot.badge,
+                    badgeColor: snapshot.badgeColor,
                     chart: snapshot.chart
                 )
                 let stateID = current.stateID
@@ -421,6 +423,7 @@ final class UsageBoardStore: ObservableObject {
                 items: cached.items,
                 updatedAt: cached.updatedAt,
                 badge: cached.badge,
+                badgeColor: cached.badgeColor,
                 chart: cached.chart
             )
         }
@@ -587,6 +590,7 @@ final class UsageBoardStore: ObservableObject {
         items: [UsageItem] = [],
         updatedAt: Date? = nil,
         badge: String? = nil,
+        badgeColor: String? = nil,
         chart: PluginChart? = nil
     ) -> PluginSnapshot {
         PluginSnapshot(
@@ -596,6 +600,7 @@ final class UsageBoardStore: ObservableObject {
             items: items,
             updatedAt: updatedAt,
             badge: badge,
+            badgeColor: badgeColor,
             iconURL: plugin.metadata?.icon,
             chart: chart
         )

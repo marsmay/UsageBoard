@@ -20,12 +20,14 @@ public struct PluginOutput: Decodable, Equatable, Sendable {
     public var updatedAt: Date
     public var items: [UsageItem]
     public var badge: String?
+    public var badgeColor: String?
     public var chart: PluginChart?
 
-    public init(updatedAt: Date, items: [UsageItem], badge: String? = nil, chart: PluginChart? = nil) {
+    public init(updatedAt: Date, items: [UsageItem], badge: String? = nil, badgeColor: String? = nil, chart: PluginChart? = nil) {
         self.updatedAt = updatedAt
         self.items = items
         self.badge = badge
+        self.badgeColor = badgeColor
         self.chart = chart
     }
 }

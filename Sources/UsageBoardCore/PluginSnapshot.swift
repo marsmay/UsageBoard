@@ -14,6 +14,7 @@ public struct PluginSnapshot: Equatable, Identifiable, Sendable {
     public var items: [UsageItem]
     public var updatedAt: Date?
     public var badge: String?
+    public var badgeColor: String?
     public var iconURL: String?
     public var chart: PluginChart?
 
@@ -24,6 +25,7 @@ public struct PluginSnapshot: Equatable, Identifiable, Sendable {
         items: [UsageItem] = [],
         updatedAt: Date? = nil,
         badge: String? = nil,
+        badgeColor: String? = nil,
         iconURL: String? = nil,
         chart: PluginChart? = nil
     ) {
@@ -33,6 +35,7 @@ public struct PluginSnapshot: Equatable, Identifiable, Sendable {
         self.items = items
         self.updatedAt = updatedAt
         self.badge = badge
+        self.badgeColor = badgeColor
         self.iconURL = iconURL
         self.chart = chart
     }
@@ -42,12 +45,14 @@ public struct PluginCachedState: Codable, Equatable, Sendable {
     public var updatedAt: Date
     public var items: [UsageItem]
     public var badge: String?
+    public var badgeColor: String?
     public var chart: PluginChart?
 
-    public init(updatedAt: Date, items: [UsageItem], badge: String? = nil, chart: PluginChart? = nil) {
+    public init(updatedAt: Date, items: [UsageItem], badge: String? = nil, badgeColor: String? = nil, chart: PluginChart? = nil) {
         self.updatedAt = updatedAt
         self.items = items
         self.badge = badge
+        self.badgeColor = badgeColor
         self.chart = chart
     }
 }

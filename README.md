@@ -60,6 +60,7 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 | Codex | `codex-usage-plugin.py` | 查询 OpenAI Codex CLI 用量和统计 |
 | MiniMax | `minimax-usage-plugin.py` | 查询 MiniMax Coding Plan 用量 |
 | DeepSeek | `deepseek-usage-plugin.py` | 查询 DeepSeek 账户余额 |
+| Kimi | `kimi-usage-plugin.py` | 查询 Kimi Code 用量 |
 | Tavily | `tavily-usage-plugin.py` | 查询 Tavily Search 月度用量 |
 
 内置插件源文件位于 [Resources/BundledPlugins](Resources/BundledPlugins)，其中 `_common.py` 是插件共享的公共模块，提供参数解析、翻译、HTTP 错误处理等工具函数。打包后它们会位于 app 包的 `Contents/Resources/Plugins/`。
@@ -297,7 +298,8 @@ UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOA
 - `items[].resetAt`：可选重置时间，ISO 8601 格式。
 - `items[].status`：`normal`、`warning`、`critical`、`unknown`。
 - `items[].color`：可选进度条颜色，支持 `blue`、`yellow`、`orange`、`red`、`green`，缺省蓝色。
-- `badge`：可选字符串，显示在插件卡片标题旁的黑色圆角徽章中（白色大写加粗文字）。
+- `badge`：可选字符串，显示在插件卡片标题旁的圆角徽章中（白色大写加粗文字）。
+- `badgeColor`：可选字符串，徽标颜色，支持 `blue`、`orange`、`gray`、`indigo`、`purple`、`teal`、`green`、`red`、`yellow`；缺省时按 `badge` 文字匹配预设档位（如 PRO/MAX）。
 - `chart`：可选 token 统计图，当前支持 `kind: "line"`。
 - `chart.period`：统计周期标识，例如 `7d`、`15d`、`30d`。
 - `chart.bucketUnit`：时间桶单位，支持 `hour` 或 `day`。
@@ -305,7 +307,7 @@ UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOA
 - `chart.message`：可选提示文案，统计数据为空或不可用时显示。
 - `error`：可选顶层错误信息；存在且非空时，该插件本次运行会被视为失败，错误文本显示在卡片内容区。
 
-内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过 `DATA_DIR` 参数指定数据目录（默认 `~/.codex`），从中读取 `auth.json` 获取认证令牌，并解析会话文件生成 token 统计。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中，且每次运行都会重新扫描当天数据。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。
+内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过 `DATA_DIR` 参数指定数据目录（默认 `~/.codex`），从中读取 `auth.json` 获取认证令牌，并解析会话文件生成 token 统计。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中，且每次运行都会重新扫描当天数据。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并可通过 `PLAN` 参数手动指定订阅计划，覆盖接口返回的套餐信息。
 
 ## 安装
 
