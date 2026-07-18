@@ -105,7 +105,7 @@ struct PluginSettingsCard: View {
             Text(label)
                 .font(.system(size: 13))
                 .lineLimit(1)
-                .frame(width: 80, alignment: .trailing)
+                .frame(width: 100, alignment: .trailing)
                 .foregroundStyle(.primary)
             value()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -143,7 +143,7 @@ struct PluginParameterField: View {
                             .foregroundStyle(.red)
                     }
                 }
-                .frame(width: 80, alignment: .trailing)
+                .frame(width: 100, alignment: .trailing)
                 input
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
