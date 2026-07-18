@@ -18,22 +18,6 @@
 #       "type": "secret",
 #       "required": true,
 #       "placeholder": "Kimi Code API Key"
-#     },
-#     {
-#       "name": "PLAN",
-#       "label": "订阅计划",
-#       "label@zh-Hans": "订阅计划",
-#       "label@en": "Subscription Plan",
-#       "type": "choice",
-#       "required": false,
-#       "defaultValue": "",
-#       "options": [
-#         {"label": "无",       "label@zh-Hans": "无",       "label@en": "None",       "value": ""},
-#         {"label": "Andante",  "label@zh-Hans": "Andante",  "label@en": "Andante",    "value": "Andante"},
-#         {"label": "Moderato", "label@zh-Hans": "Moderato", "label@en": "Moderato",   "value": "Moderato"},
-#         {"label": "Allegretto","label@zh-Hans": "Allegretto","label@en": "Allegretto","value": "Allegretto"},
-#         {"label": "Allegro",  "label@zh-Hans": "Allegro",  "label@en": "Allegro",    "value": "Allegro"}
-#       ]
 #     }
 #   ]
 # }
@@ -69,12 +53,22 @@ ENDPOINT = "https://api.kimi.com/coding/v1/usages"
 # Kimi Code 用量端点面向其 CLI 客户端，保留与 @moonshot-ai/kimi-code 一致的 UA 以兼容服务端校验。
 USER_AGENT = "kimi-code/0.27.0"
 
-# Kimi Code 订阅计划 → 徽标颜色（按通用等级 basic/stand/pro/max 对应的配色）。
+# Kimi 商品配置中的会员等级 → 订阅计划。
+MEMBERSHIP_PLAN = {
+    "LEVEL_FREE": "Adagio",
+    "LEVEL_TRIAL": "Andante",
+    "LEVEL_BASIC": "Moderato",
+    "LEVEL_INTERMEDIATE": "Allegretto",
+    "LEVEL_ADVANCED": "Allegro",
+}
+
+# Kimi Code 订阅计划 → 徽标颜色。
 PLAN_BADGE_COLOR = {
-    "Andante": "gray",      # basic
-    "Moderato": "indigo",   # stand
-    "Allegretto": "blue",   # pro
-    "Allegro": "orange",    # max
+    "Adagio": "gray",
+    "Andante": "gray",
+    "Moderato": "indigo",
+    "Allegretto": "blue",
+    "Allegro": "orange",
 }
 
 TRANSLATIONS = {
@@ -135,33 +129,18 @@ def fetch_usage(api_key: str) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def normalize_plan(value: str) -> str:
-    """Strip enum prefixes like LEVEL_INTERMEDIATE -> INTERMEDIATE."""
-    for prefix in ("LEVEL_", "PLAN_", "TYPE_"):
-        if value.startswith(prefix):
-            return value[len(prefix):]
-    return value
-
-
 def extract_plan(payload: dict[str, Any]) -> str | None:
-    """Best-effort plan/tier extraction for badge display."""
+    """Map the usage API membership level to its configured product title."""
     user = payload.get("user")
-    if isinstance(user, dict):
-        membership = user.get("membership")
-        if isinstance(membership, dict):
-            level = membership.get("level")
-            if isinstance(level, str) and level:
-                return normalize_plan(level)
-
-    for key in ("plan", "tier", "subscription", "membership", "level"):
-        value = payload.get(key)
-        if isinstance(value, str) and value:
-            return normalize_plan(value)
-        if isinstance(value, dict):
-            name = value.get("name") or value.get("tier") or value.get("plan") or value.get("level")
-            if isinstance(name, str) and name:
-                return normalize_plan(name)
-    return None
+    if not isinstance(user, dict):
+        return None
+    membership = user.get("membership")
+    if not isinstance(membership, dict):
+        return None
+    level = membership.get("level")
+    if not isinstance(level, str):
+        return None
+    return MEMBERSHIP_PLAN.get(level)
 
 
 def build_items(payload: dict[str, Any], language: str, translate: Any) -> tuple[list[dict[str, Any]], str | None]:
@@ -243,10 +222,7 @@ def main() -> int:
     if not items:
         return failure(translate(language, "no_quota_items"))
 
-    manual_plan = (params.get("PLAN", "") or "").strip() or None
-    badge = manual_plan or auto_badge
-    badge_color = PLAN_BADGE_COLOR.get(manual_plan) if manual_plan else None
-    return success(items, badge=badge, badgeColor=badge_color)
+    return success(items, badge=auto_badge, badgeColor=PLAN_BADGE_COLOR.get(auto_badge))
 
 
 if __name__ == "__main__":

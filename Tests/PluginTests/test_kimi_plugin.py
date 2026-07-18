@@ -96,7 +96,7 @@ class TestBuildItems(unittest.TestCase):
 
     def test_parses_window_and_weekly(self):
         items, badge = plugin.build_items(FAKE_USAGE, "zh-Hans", translate())
-        self.assertEqual(badge, "INTERMEDIATE")
+        self.assertEqual(badge, "Allegretto")
         self.assertEqual(len(items), 2)
 
         window = next(item for item in items if item["id"] == "kimi-window-300")
@@ -161,19 +161,26 @@ class TestBuildItems(unittest.TestCase):
 
 
 class TestExtractPlan(unittest.TestCase):
-    """Badge is read from user.membership.level with the LEVEL_ prefix stripped."""
+    """Badge is mapped from user.membership.level using Kimi's goods configuration."""
 
-    def test_from_membership_level(self):
-        payload = {"user": {"membership": {"level": "LEVEL_ADVANCED"}}}
-        self.assertEqual(plugin.extract_plan(payload), "ADVANCED")
+    def test_maps_membership_levels_to_product_titles(self):
+        cases = {
+            "LEVEL_FREE": "Adagio",
+            "LEVEL_TRIAL": "Andante",
+            "LEVEL_BASIC": "Moderato",
+            "LEVEL_INTERMEDIATE": "Allegretto",
+            "LEVEL_ADVANCED": "Allegro",
+        }
+        for level, plan in cases.items():
+            payload = {"user": {"membership": {"level": level}}}
+            self.assertEqual(plugin.extract_plan(payload), plan)
 
-    def test_strips_plan_and_type_prefixes(self):
-        self.assertEqual(plugin.normalize_plan("PLAN_PRO"), "PRO")
-        self.assertEqual(plugin.normalize_plan("TYPE_PURCHASE"), "PURCHASE")
-        self.assertEqual(plugin.normalize_plan("Andante"), "Andante")
+    def test_returns_none_for_unknown_membership_level(self):
+        payload = {"user": {"membership": {"level": "LEVEL_UNKNOWN"}}}
+        self.assertIsNone(plugin.extract_plan(payload))
 
-    def test_falls_back_to_top_level_plan(self):
-        self.assertEqual(plugin.extract_plan({"plan": "Andante"}), "Andante")
+    def test_does_not_fall_back_to_unrelated_top_level_fields(self):
+        self.assertIsNone(plugin.extract_plan({"plan": "Allegro", "level": "LEVEL_ADVANCED"}))
 
     def test_returns_none_when_absent(self):
         self.assertIsNone(plugin.extract_plan({}))
@@ -185,34 +192,16 @@ class TestMainFlow(unittest.TestCase):
     def test_success_output_has_schema_version_and_badge(self):
         output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=FAKE_USAGE)
         self.assertIn("schemaVersion", output)
-        self.assertEqual(output["badge"], "INTERMEDIATE")
-        self.assertNotIn("badgeColor", output)
+        self.assertEqual(output["badge"], "Allegretto")
+        self.assertEqual(output["badgeColor"], "blue")
         self.assertEqual(len(output["items"]), 2)
 
-    def test_manual_plan_keeps_name_with_color(self):
-        output = run_main(
-            ["--usageboard-param", "API_KEY=fake", "--usageboard-param", "PLAN=Allegro"],
-            fake_response=FAKE_USAGE,
-        )
-        self.assertEqual(output["badge"], "Allegro")
-        self.assertEqual(output["badgeColor"], "orange")
-
-    def test_plan_badge_keeps_name_with_color(self):
-        cases = {"Andante": "gray", "Moderato": "indigo", "Allegretto": "blue", "Allegro": "orange"}
-        for plan, color in cases.items():
-            output = run_main(
-                ["--usageboard-param", "API_KEY=fake", "--usageboard-param", f"PLAN={plan}"],
-                fake_response=FAKE_USAGE,
-            )
-            self.assertEqual(output["badge"], plan, f"badge text should stay as {plan}")
-            self.assertEqual(output["badgeColor"], color, f"PLAN={plan} color")
-
-    def test_empty_plan_value_falls_back_to_auto_badge(self):
-        output = run_main(
-            ["--usageboard-param", "API_KEY=fake", "--usageboard-param", "PLAN="],
-            fake_response=FAKE_USAGE,
-        )
-        self.assertEqual(output["badge"], "INTERMEDIATE")
+    def test_unknown_membership_level_omits_badge(self):
+        payload = dict(FAKE_USAGE)
+        payload["user"] = {"membership": {"level": "LEVEL_UNKNOWN"}}
+        output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=payload)
+        self.assertNotIn("badge", output)
+        self.assertNotIn("badgeColor", output)
 
 
 if __name__ == "__main__":
