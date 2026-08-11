@@ -9,11 +9,14 @@ struct TokenLineChartPlot: View {
     var visibleWidth: CGFloat
     @State private var hoverLocation: CGPoint?
 
-    private let leadingWidth: CGFloat = 30
+    private let leadingWidth = TokenChartLayout.leadingAxisWidth
     private let trailingPadding: CGFloat = 20
     private let topPadding: CGFloat = 12
     private let bottomHeight: CGFloat = 26
-    private let yTickCount = 3
+
+    private var axisScale: TokenChartAxisScale {
+        TokenChartAxisScale(dataMaximum: maxValue)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -53,9 +56,9 @@ struct TokenLineChartPlot: View {
 
     private func grid(in plotRect: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
-            ForEach(0...yTickCount, id: \.self) { index in
-                let value = maxValue * Double(yTickCount - index) / Double(yTickCount)
-                let y = plotRect.minY + CGFloat(index) / CGFloat(yTickCount) * plotRect.height
+            ForEach(0...axisScale.tickCount, id: \.self) { index in
+                let value = axisScale.step * Double(axisScale.tickCount - index)
+                let y = plotRect.minY + CGFloat(index) / CGFloat(axisScale.tickCount) * plotRect.height
                 Path { path in
                     path.move(to: CGPoint(x: plotRect.minX, y: y))
                     path.addLine(to: CGPoint(x: plotRect.maxX, y: y))
@@ -66,8 +69,11 @@ struct TokenLineChartPlot: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .frame(width: leadingWidth - 4, alignment: .trailing)
-                    .position(x: (leadingWidth - 4) / 2, y: y)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .allowsTightening(true)
+                    .frame(width: leadingWidth - 8, alignment: .trailing)
+                    .position(x: (leadingWidth - 8) / 2, y: y)
             }
         }
     }
@@ -202,7 +208,7 @@ struct TokenLineChartPlot: View {
     }
 
     private func yPosition(for value: Double, in plotRect: CGRect) -> CGFloat {
-        let clamped = max(0, min(value / maxValue, 1))
+        let clamped = max(0, min(value / axisScale.maximum, 1))
         return plotRect.maxY - CGFloat(clamped) * plotRect.height
     }
 
@@ -216,6 +222,57 @@ struct TokenLineChartPlot: View {
     private func valueAt(_ index: Int, in series: TokenChartSeries) -> Double {
         guard series.values.indices.contains(index) else { return 0 }
         return series.values[index]
+    }
+}
+
+enum TokenChartLayout {
+    static let leadingAxisWidth: CGFloat = 40
+}
+
+struct TokenChartAxisScale: Equatable {
+    var maximum: Double
+    var step: Double
+    var tickCount: Int
+
+    init(dataMaximum: Double, maximumTickCount: Int = 5) {
+        let resolvedMaximum = max(dataMaximum, 0)
+        let resolvedMaximumTickCount = max(maximumTickCount, 1)
+        var selectedMaximum = Double.greatestFiniteMagnitude
+        var selectedStep = 50.0
+        var selectedTickCount = 1
+
+        for tickCount in 1...resolvedMaximumTickCount {
+            let rawStep = resolvedMaximum / Double(tickCount)
+            let step = Self.niceStep(ceiling: rawStep)
+            let maximum = step * Double(tickCount)
+            if maximum < selectedMaximum
+                || (maximum == selectedMaximum && tickCount > selectedTickCount) {
+                selectedMaximum = maximum
+                selectedStep = step
+                selectedTickCount = tickCount
+            }
+        }
+
+        self.maximum = selectedMaximum
+        self.step = selectedStep
+        self.tickCount = selectedTickCount
+    }
+
+    private static func niceStep(ceiling value: Double) -> Double {
+        let resolvedValue = max(value, 50)
+        let magnitude = pow(10, floor(log10(resolvedValue)))
+        let normalized = resolvedValue / magnitude
+        let factor: Double
+        if normalized <= 1 {
+            factor = 1
+        } else if normalized <= 2 {
+            factor = 2
+        } else if normalized <= 5 {
+            factor = 5
+        } else {
+            factor = 10
+        }
+        return factor * magnitude
     }
 }
 
@@ -242,13 +299,20 @@ func formattedTokenNumber(_ value: Double) -> (number: String, unit: String, com
 
 func formattedAxisTokenNumber(_ value: Double) -> String {
     if value >= 1_000_000_000 {
-        return "\(Int((value / 1_000_000_000).rounded()))B"
+        return "\(formattedAxisNumber(value / 1_000_000_000))B"
     }
     if value >= 1_000_000 {
-        return "\(Int((value / 1_000_000).rounded()))M"
+        return "\(formattedAxisNumber(value / 1_000_000))M"
     }
     if value >= 1_000 {
-        return "\(Int((value / 1_000).rounded()))K"
+        return "\(formattedAxisNumber(value / 1_000))K"
     }
     return "\(Int(value.rounded()))"
+}
+
+private func formattedAxisNumber(_ value: Double) -> String {
+    if abs(value.rounded() - value) < 0.000_001 {
+        return String(Int(value.rounded()))
+    }
+    return String(format: "%.1f", value)
 }

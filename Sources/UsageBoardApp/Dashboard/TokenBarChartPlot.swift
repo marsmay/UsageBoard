@@ -9,11 +9,14 @@ struct TokenBarChartPlot: View {
     var visibleWidth: CGFloat
     @State private var hoverLocation: CGPoint?
 
-    private let leadingWidth: CGFloat = 30
+    private let leadingWidth = TokenChartLayout.leadingAxisWidth
     private let trailingPadding: CGFloat = 20
     private let topPadding: CGFloat = 12
     private let bottomHeight: CGFloat = 26
-    private let yTickCount = 3
+
+    private var axisScale: TokenChartAxisScale {
+        TokenChartAxisScale(dataMaximum: maxValue)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -53,9 +56,9 @@ struct TokenBarChartPlot: View {
 
     private func grid(in plotRect: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
-            ForEach(0...yTickCount, id: \.self) { index in
-                let value = maxValue * Double(yTickCount - index) / Double(yTickCount)
-                let y = plotRect.minY + CGFloat(index) / CGFloat(yTickCount) * plotRect.height
+            ForEach(0...axisScale.tickCount, id: \.self) { index in
+                let value = axisScale.step * Double(axisScale.tickCount - index)
+                let y = plotRect.minY + CGFloat(index) / CGFloat(axisScale.tickCount) * plotRect.height
                 Path { path in
                     path.move(to: CGPoint(x: plotRect.minX, y: y))
                     path.addLine(to: CGPoint(x: plotRect.maxX, y: y))
@@ -66,8 +69,11 @@ struct TokenBarChartPlot: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .frame(width: leadingWidth - 4, alignment: .trailing)
-                    .position(x: (leadingWidth - 4) / 2, y: y)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .allowsTightening(true)
+                    .frame(width: leadingWidth - 8, alignment: .trailing)
+                    .position(x: (leadingWidth - 8) / 2, y: y)
             }
         }
     }
@@ -193,7 +199,7 @@ struct TokenBarChartPlot: View {
     }
 
     private func yHeight(for value: Double, in plotRect: CGRect) -> CGFloat {
-        let clamped = max(0, min(value / maxValue, 1))
+        let clamped = max(0, min(value / axisScale.maximum, 1))
         return CGFloat(clamped) * plotRect.height
     }
 
