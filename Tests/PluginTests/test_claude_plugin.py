@@ -6,7 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from io import StringIO
 from unittest.mock import patch
@@ -218,6 +218,42 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
                 "Today's data must be re-scanned on subsequent runs, not returned from cache as-is",
             )
 
+    def test_last_cached_day_is_rescanned_after_midnight(self):
+        today = plugin._parse_date(plugin.local_today())
+        yesterday = today - timedelta(days=1)
+        local_tz = datetime.now().astimezone().tzinfo
+
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = os.path.join(tmp, "projects", "p1")
+            os.makedirs(projects)
+            jsonl = os.path.join(projects, "session.jsonl")
+            first = datetime.combine(yesterday, time(10), tzinfo=local_tz)
+            second = datetime.combine(yesterday, time(20), tzinfo=local_tz)
+            self._write_jsonl(jsonl, first.isoformat(), "claude-sonnet", 100)
+            self._write_jsonl(jsonl, second.isoformat(), "claude-sonnet", 250)
+
+            plugin.save_stats_cache(tmp, {
+                "version": plugin.CACHE_VERSION,
+                "last_date": plugin._format_date(yesterday),
+                "days": {
+                    plugin._format_date(yesterday): {
+                        "claude-sonnet": {
+                            "input": 0,
+                            "output": 100,
+                            "cache_creation": 0,
+                            "cache_read": 0,
+                        }
+                    }
+                },
+            })
+
+            result = plugin.maintain_cache(tmp)
+
+        self.assertEqual(
+            result.get(plugin._format_date(yesterday), {}).get("claude-sonnet", {}).get("output"),
+            350,
+        )
+
 
 class TestMaintainCacheRecovery(unittest.TestCase):
     def test_invalid_last_date_rebuilds_cache(self):
@@ -312,6 +348,76 @@ class TestParseRecordsReturnsBreakdown(unittest.TestCase):
             self.assertEqual(breakdown, {
                 "input": 100, "output": 50, "cache_creation": 200, "cache_read": 9999,
             })
+
+    def test_streaming_frames_merge_valid_usage_by_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl = os.path.join(tmp, "session.jsonl")
+            frames = [
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-15T10:00:00Z",
+                    "message": {
+                        "id": "msg-stream",
+                        "model": "claude-sonnet-4-5",
+                        "usage": {
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0,
+                        },
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-15T10:01:00Z",
+                    "message": {
+                        "id": "msg-stream",
+                        "model": "claude-sonnet-4-5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 10,
+                            "cache_creation_input_tokens": 5,
+                            "cache_read_input_tokens": 0,
+                        },
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-15T10:02:00Z",
+                    "message": {
+                        "id": "msg-stream",
+                        "model": "claude-sonnet-4-5",
+                        "usage": {
+                            "input_tokens": 80,
+                            "output_tokens": 50,
+                            "cache_creation_input_tokens": 999,
+                            "cache_creation": {
+                                "ephemeral_5m_input_tokens": 7,
+                                "ephemeral_1h_input_tokens": 3,
+                            },
+                            "cache_read_input_tokens": 20,
+                        },
+                    },
+                },
+            ]
+            with open(jsonl, "w") as f:
+                for frame in frames:
+                    f.write(json.dumps(frame) + "\n")
+
+            start = datetime(2026, 5, 14, tzinfo=timezone.utc)
+            end = datetime(2026, 5, 16, tzinfo=timezone.utc)
+            records = plugin.parse_records([jsonl], start, end)
+
+        self.assertEqual(len(records), 1)
+        timestamp, model, breakdown = records[0]
+        self.assertEqual(timestamp, datetime(2026, 5, 15, 10, 1, tzinfo=timezone.utc))
+        self.assertEqual(model, "claude-sonnet-4-5")
+        self.assertEqual(breakdown, {
+            "input": 100,
+            "output": 50,
+            "cache_creation": 10,
+            "cache_read": 20,
+        })
 
 
 if __name__ == "__main__":

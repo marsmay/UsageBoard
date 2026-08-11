@@ -281,8 +281,8 @@ def maintain_chart_cache(data_dir: str, language: str) -> dict[str, dict[str, fl
     if gap_days < 0 or gap_days > 30:
         return full_scan_and_save()
 
-    # Today is always dirty — re-scan it. If gap_days >= 1, also scan the missed days.
-    scan_start = today if gap_days == 0 else last_date + timedelta(days=1)
+    # The last cached day is dirty until the next run has crossed midnight.
+    scan_start = max(cutoff, last_date)
     day_count = (today - scan_start).days + 1
     scan_dates = [scan_start + timedelta(days=i) for i in range(day_count)]
     files = collect_session_files(data_dir, scan_start, today)

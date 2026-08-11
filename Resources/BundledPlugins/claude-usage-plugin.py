@@ -83,7 +83,7 @@ from _common import (  # noqa: E402
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 PARSE_ERROR = "parse_error"
 REQUEST_TIMEOUT = "request_timeout"
@@ -109,6 +109,22 @@ def compute_tokens(breakdown):
     cc = breakdown.get("cache_creation", 0)
     cr = breakdown.get("cache_read", 0)
     return i + o + cc + cr
+
+
+def _token_number(value):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    return 0
+
+
+def _cache_creation_tokens(usage):
+    cache_creation = usage.get("cache_creation")
+    if isinstance(cache_creation, dict):
+        return (
+            _token_number(cache_creation.get("ephemeral_5m_input_tokens"))
+            + _token_number(cache_creation.get("ephemeral_1h_input_tokens"))
+        )
+    return _token_number(usage.get("cache_creation_input_tokens"))
 
 
 def _translate(lang):
@@ -215,8 +231,7 @@ def recent_jsonl_files(data_dir):
     return [f for f in all_jsonl_files(data_dir) if os.path.getmtime(f) >= yesterday_midnight]
 
 def parse_records(files, start_dt, end_dt):
-    seen_ids = set()
-    records = []
+    records_by_id = {}
     for filepath in files:
         try:
             with open(filepath, encoding="utf-8", errors="ignore") as f:
@@ -232,17 +247,18 @@ def parse_records(files, start_dt, end_dt):
                         continue
                     msg = obj.get("message", {})
                     msg_id = msg.get("id")
-                    if not msg_id or msg_id in seen_ids:
+                    if not msg_id:
                         continue
-                    seen_ids.add(msg_id)
                     usage = msg.get("usage", {})
+                    if not isinstance(usage, dict):
+                        continue
                     breakdown = {
-                        "input":          usage.get("input_tokens", 0),
-                        "output":         usage.get("output_tokens", 0),
-                        "cache_creation": usage.get("cache_creation_input_tokens", 0),
-                        "cache_read":     usage.get("cache_read_input_tokens", 0),
+                        "input":          _token_number(usage.get("input_tokens")),
+                        "output":         _token_number(usage.get("output_tokens")),
+                        "cache_creation": _cache_creation_tokens(usage),
+                        "cache_read":     _token_number(usage.get("cache_read_input_tokens")),
                     }
-                    if breakdown["input"] + breakdown["output"] + breakdown["cache_creation"] + breakdown["cache_read"] <= 0:
+                    if compute_tokens(breakdown) <= 0:
                         continue
                     raw_ts = obj.get("timestamp", "")
                     if not raw_ts:
@@ -251,11 +267,26 @@ def parse_records(files, start_dt, end_dt):
                         ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
                     except Exception:
                         continue
-                    if start_dt <= ts <= end_dt:
-                        records.append((ts, msg.get("model", "unknown"), breakdown))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+
+                    model = msg.get("model", "unknown")
+                    existing = records_by_id.get(msg_id)
+                    if existing is None:
+                        records_by_id[msg_id] = [ts, model, breakdown]
+                        continue
+
+                    if ts < existing[0]:
+                        existing[0] = ts
+                        existing[1] = model
+                    for key in ("input", "output", "cache_creation", "cache_read"):
+                        existing[2][key] = max(existing[2][key], breakdown[key])
         except Exception:
             continue
-    return records
+    return sorted(
+        (tuple(record) for record in records_by_id.values() if start_dt <= record[0] <= end_dt),
+        key=lambda record: record[0],
+    )
 
 def group_by_local_date(records):
     result = {}
@@ -334,8 +365,8 @@ def maintain_cache(data_dir):
     if gap_days < 0 or gap_days > 30:
         return full_scan_and_save()
 
-    # Today is always dirty — re-scan it. If gap_days >= 1, also scan the missed days.
-    scan_start = today if gap_days == 0 else last_date + timedelta(days=1)
+    # The last cached day is dirty until the next run has crossed midnight.
+    scan_start = max(cutoff, last_date)
     scan_start_utc = datetime(scan_start.year, scan_start.month, scan_start.day, tzinfo=timezone.utc) - timedelta(hours=14)
     cutoff_ts = scan_start_utc.timestamp()
     recent_files = [f for f in all_jsonl_files(data_dir) if os.path.getmtime(f) >= cutoff_ts]

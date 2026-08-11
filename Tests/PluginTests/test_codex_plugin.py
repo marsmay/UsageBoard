@@ -6,7 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -206,6 +206,113 @@ class TestChartCacheRecovery(unittest.TestCase):
 
         self.assertNotIn("bad-date", daily)
         self.assertEqual(daily.get(plugin._format_date(yesterday)), {"old-model": 2})
+
+    def test_last_cached_day_is_rescanned_after_midnight(self):
+        today = plugin.datetime.now().date()
+        yesterday = today - timedelta(days=1)
+        timestamp = datetime.combine(
+            yesterday,
+            time(20),
+            tzinfo=datetime.now().astimezone().tzinfo,
+        ).isoformat()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions = Path(tmp) / "sessions" / yesterday.strftime("%Y/%m/%d")
+            sessions.mkdir(parents=True)
+            session = sessions / f"rollout-{yesterday.isoformat()}T10-00-00-test.jsonl"
+            session.write_text(
+                json.dumps({"type": "turn_context", "payload": {"model": "gpt-5"}}) + "\n"
+                + json.dumps({
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "timestamp": timestamp,
+                        "info": {"total_token_usage": {"total_tokens": 350}},
+                    },
+                }) + "\n",
+                encoding="utf-8",
+            )
+            plugin.save_chart_cache(tmp, {
+                "version": plugin.CACHE_VERSION,
+                "last_date": plugin._format_date(yesterday),
+                "days": {plugin._format_date(yesterday): {"gpt-5": 100}},
+            })
+
+            daily = plugin.maintain_chart_cache(tmp, "zh-Hans")
+
+        self.assertEqual(daily.get(plugin._format_date(yesterday)), {"gpt-5": 350})
+
+
+class TestParseSessionsForChart(unittest.TestCase):
+    def _parse_events(self, events):
+        today = datetime.now().astimezone()
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp) / "rollout.jsonl"
+            session.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            result = plugin.parse_sessions_for_chart(
+                [str(session)],
+                [today],
+                "day",
+                "7d",
+                "en",
+            )
+        return sum(segment["tokens"] for segment in result["buckets"][0]["segments"])
+
+    def _token_event(self, total_usage, last_usage=None):
+        info = {"total_token_usage": total_usage}
+        if last_usage is not None:
+            info["last_token_usage"] = last_usage
+        return {
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "timestamp": datetime.now().astimezone().isoformat(),
+                "info": info,
+            },
+        }
+
+    def test_repeated_last_usage_does_not_recount_unchanged_cumulative_total(self):
+        events = [
+            {"type": "turn_context", "payload": {"model": "gpt-5"}},
+            self._token_event({"total_tokens": 120}, {"total_tokens": 120}),
+            self._token_event({"total_tokens": 120}, {"total_tokens": 120}),
+        ]
+
+        self.assertEqual(self._parse_events(events), 120)
+
+    def test_invalid_last_usage_is_ignored_when_cumulative_total_is_zero(self):
+        events = [
+            {"type": "turn_context", "payload": {"model": "gpt-5"}},
+            self._token_event(
+                {
+                    "input_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_output_tokens": 0,
+                    "total_tokens": 0,
+                },
+                {"total_tokens": 22440},
+            ),
+        ]
+
+        self.assertEqual(self._parse_events(events), 0)
+
+    def test_total_tokens_does_not_double_count_cached_or_reasoning_subsets(self):
+        events = [
+            {"type": "turn_context", "payload": {"model": "gpt-5"}},
+            self._token_event({
+                "input_tokens": 100,
+                "cached_input_tokens": 80,
+                "output_tokens": 20,
+                "reasoning_output_tokens": 10,
+                "total_tokens": 120,
+            }),
+        ]
+
+        self.assertEqual(self._parse_events(events), 120)
 
 
 if __name__ == "__main__":
