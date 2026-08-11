@@ -48,19 +48,6 @@
 #       "defaultValue": "false"
 #     },
 #     {
-#       "name": "CALC_MODE",
-#       "label": "Calculation Mode",
-#       "label@zh-Hans": "计算方式",
-#       "label@en": "Calculation Mode",
-#       "type": "choice",
-#       "required": false,
-#       "defaultValue": "billable",
-#       "options": [
-#         {"label": "Billing-weighted", "label@zh-Hans": "计费倍率", "label@en": "Billing-weighted", "value": "billable"},
-#         {"label": "Actual usage",     "label@zh-Hans": "实际消耗", "label@en": "Actual usage",     "value": "actual"}
-#       ]
-#     },
-#     {
 #       "name": "DATA_DIR",
 #       "label": "Data Directory",
 #       "label@zh-Hans": "数据目录",
@@ -116,14 +103,12 @@ def local_today():
 def is_claude_model(model_name):
     return model_name.startswith("claude-")
 
-def compute_tokens(breakdown, mode):
+def compute_tokens(breakdown):
     i  = breakdown.get("input", 0)
     o  = breakdown.get("output", 0)
     cc = breakdown.get("cache_creation", 0)
     cr = breakdown.get("cache_read", 0)
-    if mode == "actual":
-        return i + o + cc + cr
-    return int(round(i * 1.0 + o * 5.0 + cc * 1.25 + cr * 0.1))
+    return i + o + cc + cr
 
 
 def _translate(lang):
@@ -380,7 +365,7 @@ def maintain_cache(data_dir):
 
 # ─── Chart ────────────────────────────────────────────────────────────────────
 
-def build_chart(params, daily, lang, translate, mode):
+def build_chart(params, daily, lang, translate):
     stat_period = params.get("STAT_PERIOD", "7d")
     claude_only = params.get("CLAUDE_ONLY", "false").lower() == "true"
     stat_days = {"7d": 7, "15d": 15, "30d": 30}.get(stat_period, 7)
@@ -397,7 +382,7 @@ def build_chart(params, daily, lang, translate, mode):
         for model, breakdown in sorted(day_data.items()):
             if claude_only and not is_claude_model(model):
                 continue
-            tokens = compute_tokens(breakdown, mode)
+            tokens = compute_tokens(breakdown)
             if tokens > 0:
                 segments.append({"model": model, "tokens": tokens})
         buckets.append({"id": date, "label": date[5:], "segments": segments})
@@ -421,9 +406,8 @@ def main():
         failure(translate(lang, "no_data_dir"))
         return
 
-    mode = params.get("CALC_MODE", "billable")
     daily = maintain_cache(data_dir)
-    chart = build_chart(params, daily, lang, translate, mode)
+    chart = build_chart(params, daily, lang, translate)
 
     if plan == "none":
         success([], chart=chart)

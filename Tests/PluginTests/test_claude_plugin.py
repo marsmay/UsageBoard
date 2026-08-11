@@ -254,20 +254,33 @@ class TestMaintainCacheRecovery(unittest.TestCase):
 
 
 class TestComputeTokens(unittest.TestCase):
-    """compute_tokens supports both billing-weighted and actual modes."""
+    """compute_tokens always reports the actual total across all token categories."""
 
-    def test_actual_sums_all_four(self):
+    def test_sums_all_four(self):
         b = {"input": 100, "output": 50, "cache_creation": 200, "cache_read": 9999}
-        self.assertEqual(plugin.compute_tokens(b, "actual"), 100 + 50 + 200 + 9999)
+        self.assertEqual(plugin.compute_tokens(b), 100 + 50 + 200 + 9999)
 
-    def test_billable_applies_ratios(self):
-        b = {"input": 100, "output": 50, "cache_creation": 200, "cache_read": 9999}
-        # 100*1 + 50*5 + 200*1.25 + 9999*0.1 = 100 + 250 + 250 + 999.9 = 1599.9 → 1600
-        self.assertEqual(plugin.compute_tokens(b, "billable"), 1600)
+    def test_chart_uses_actual_total_with_legacy_calc_mode_value(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        daily = {
+            today: {
+                "claude-sonnet": {
+                    "input": 100,
+                    "output": 50,
+                    "cache_creation": 200,
+                    "cache_read": 9999,
+                }
+            }
+        }
 
-    def test_unknown_mode_defaults_to_billable(self):
-        b = {"input": 100, "output": 50, "cache_creation": 200, "cache_read": 9999}
-        self.assertEqual(plugin.compute_tokens(b, "unknown"), 1600)
+        chart = plugin.build_chart(
+            {"STAT_PERIOD": "7d", "CALC_MODE": "billable"},
+            daily,
+            "en",
+            plugin._translate("en"),
+        )
+
+        self.assertEqual(chart["buckets"][-1]["segments"][0]["tokens"], 100 + 50 + 200 + 9999)
 
 
 class TestParseRecordsReturnsBreakdown(unittest.TestCase):

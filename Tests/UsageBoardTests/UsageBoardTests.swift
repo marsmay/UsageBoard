@@ -377,6 +377,18 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertEqual(period.options.map(\.value), ["7d", "15d", "30d"])
     }
 
+    func testClaudePluginMetadataDoesNotExposeCalculationMode() throws {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let root = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let pluginURL = root.appendingPathComponent("Resources/BundledPlugins/claude-usage-plugin.py")
+
+        let metadata = try XCTUnwrap(PluginMetadataParser.parse(fileURL: pluginURL))
+        XCTAssertEqual(metadata.parameters.map(\.name), ["PLAN", "STAT_PERIOD", "CLAUDE_ONLY", "DATA_DIR"])
+    }
+
     func testCodexPluginMetadataReadsParameters() throws {
         let testFileURL = URL(fileURLWithPath: #filePath)
         let root = testFileURL
