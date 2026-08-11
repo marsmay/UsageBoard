@@ -15,6 +15,15 @@ struct AppLocalization {
         }
     }
 
+    func chartModeName(_ mode: ChartMode) -> String {
+        switch (mode, language) {
+        case (.line, .en): return "Line Chart"
+        case (.line, .zhHans): return "折线图"
+        case (.bar, .en): return "Bar Chart"
+        case (.bar, .zhHans): return "直方图"
+        }
+    }
+
     func tabTitle(_ tab: SettingsTab) -> String {
         switch (tab, language) {
         case (.general, .en): return "General"
@@ -68,6 +77,10 @@ struct AppLocalization {
         case (.displayMode, .zhHans): return "显示模式"
         case (.displayModeHint, .en): return "Group by service or merge to a list"
         case (.displayModeHint, .zhHans): return "按服务分组或合并为列表"
+        case (.chartMode, .en): return "Chart Mode"
+        case (.chartMode, .zhHans): return "图表模式"
+        case (.chartModeHint, .en): return "Show statistics as lines or stacked bars"
+        case (.chartModeHint, .zhHans): return "以折线或堆叠直方展示统计数据"
         case (.language, .en): return "Language"
         case (.language, .zhHans): return "语言"
         case (.openPluginsFolder, .en): return "Open plugins folder"
@@ -126,8 +139,8 @@ struct AppLocalization {
         case (.expandTokenStats, .zhHans): return "展开 token 统计"
         case (.totalTokenUsage, .en): return "Total tokens"
         case (.totalTokenUsage, .zhHans): return "Token 总量"
-        case (.showAllLines, .en): return "Show all lines"
-        case (.showAllLines, .zhHans): return "显示全部曲线"
+        case (.showAllLines, .en): return "Show all statistics"
+        case (.showAllLines, .zhHans): return "显示全部统计项"
         case (.showOnlyTotalUsage, .en): return "Show only total tokens"
         case (.showOnlyTotalUsage, .zhHans): return "只显示 Token 总量"
         case (.noStatsData, .en): return "No stats data available"
@@ -164,6 +177,8 @@ struct AppLocalization {
         case launchAtLoginHint
         case displayMode
         case displayModeHint
+        case chartMode
+        case chartModeHint
         case language
         case openPluginsFolder
         case pluginAuthoringGuide

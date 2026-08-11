@@ -4,6 +4,7 @@ import UsageBoardCore
 struct PluginGroupView: View {
     var snapshot: PluginSnapshot
     var language: AppLanguage
+    var chartMode: ChartMode
     var nextRefreshAt: Date?
     var onRefresh: (() -> Void)?
     @State private var isChartExpanded = false
@@ -51,7 +52,7 @@ struct PluginGroupView: View {
 
             if let chart = snapshot.chart {
                 if snapshot.items.isEmpty {
-                    TokenUsageChartView(chart: chart, language: language)
+                    TokenUsageChartView(chart: chart, language: language, chartMode: chartMode)
                         .padding(.horizontal, 12)
                         .padding(.top, 2)
                         .padding(.bottom, 8)
@@ -76,7 +77,7 @@ struct PluginGroupView: View {
                         .help(isChartExpanded ? strings.text(.collapseTokenStats) : strings.text(.expandTokenStats))
 
                         if isChartExpanded {
-                            TokenUsageChartView(chart: chart, language: language)
+                            TokenUsageChartView(chart: chart, language: language, chartMode: chartMode)
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)
                                 .padding(.bottom, 8)

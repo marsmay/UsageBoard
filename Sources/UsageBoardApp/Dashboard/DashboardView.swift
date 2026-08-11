@@ -6,7 +6,7 @@ struct DashboardView: View {
     var mode: DisplayMode
 
     private var maxHeight: CGFloat {
-        (NSScreen.main?.visibleFrame.height ?? 800) * 2 / 3
+        (NSScreen.main?.visibleFrame.height ?? 800) * 0.75
     }
 
     private var enabledPlugins: [PluginConfiguration] {
@@ -34,6 +34,7 @@ struct DashboardView: View {
                                 PluginGroupView(
                                     snapshot: store.snapshot(for: plugin),
                                     language: store.activeLanguage,
+                                    chartMode: store.configuration.chartMode,
                                     nextRefreshAt: store.nextRefreshAt[plugin.id]
                                 ) {
                                     store.refresh(pluginID: plugin.id, force: true)
@@ -84,6 +85,7 @@ struct DashboardView: View {
                             PluginGroupView(
                                 snapshot: store.snapshot(for: plugin),
                                 language: store.activeLanguage,
+                                chartMode: store.configuration.chartMode,
                                 nextRefreshAt: store.nextRefreshAt[plugin.id]
                             ) {
                                 store.refresh(pluginID: plugin.id, force: true)

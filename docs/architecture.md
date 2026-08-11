@@ -54,7 +54,7 @@ UsageBoard/
 ├── Sources/
 │   ├── UsageBoardCore/                    # 核心逻辑，无 SwiftUI 依赖
 │   │   ├── CodableHelpers.swift           # AnyCodingKey 和多语言翻译编解码扩展
-│   │   ├── AppConfiguration.swift         # AppLanguage、DisplayMode、AppConfiguration
+│   │   ├── AppConfiguration.swift         # AppLanguage、DisplayMode、ChartMode、AppConfiguration
 │   │   ├── PluginConfiguration.swift      # 参数类型、参数元数据、插件元数据、插件配置
 │   │   ├── PluginOutput.swift             # UsageItem、PluginOutput、PluginChart 等
 │   │   ├── PluginSnapshot.swift           # PluginSnapshotState、PluginSnapshot、PluginCachedState
@@ -79,6 +79,7 @@ UsageBoard/
 │       │   ├── UsageItemRow.swift         # 用量行、进度条
 │       │   ├── TokenChartView.swift       # token 统计图容器和摘要
 │       │   ├── TokenLineChartPlot.swift   # 折线图绘制和格式化
+│       │   ├── TokenBarChartPlot.swift    # 堆叠直方图绘制和 hover 明细
 │       │   └── MeasuredScrollView.swift   # 自适应高度滚动容器
 │       ├── Settings/                      # 设置窗口视图
 │       │   ├── SettingsView.swift         # SettingsTab、SettingsView 骨架
@@ -251,7 +252,8 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `AppLanguage`                                              | 语言枚举（`zh-Hans`、`en`）                                                  |
 | `DisplayMode`                                              | 展示模式（`grouped`、`tabs`）                                                |
-| `AppConfiguration`                                         | 顶层配置（schema version、language、display mode、plugins、launch at login） |
+| `ChartMode`                                                | 图表模式（`line`、`bar`）                                                    |
+| `AppConfiguration`                                         | 顶层配置（schema version、language、display/chart mode、plugins、launch at login） |
 | `PluginConfiguration`                                      | 单个插件配置（`id`=运行时 UUID、`stateID`=持久化 ID、路径、参数值等）        |
 | `PluginMetadata`                                           | 插件元数据（name、description、icon、parameters，支持多语言翻译）            |
 | `PluginParameterMetadata`                                  | 参数定义（7 种类型：string/secret/integer/boolean/choice/directory/file）    |
@@ -348,10 +350,11 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | `PluginGroupView`     | 单个插件卡片：图标 + 标题 + 徽章 + 倒计时 + 用量行 + 统计图 |
 | `UsageItemRow`        | 单条用量行：名称 + 进度条 + 数值 + 重置时间                 |
 | `UsageProgressBar`    | 彩色进度条，高度接近文字行高，数值居中                      |
-| `TokenUsageChartView` | token 统计折线图容器                                        |
+| `TokenUsageChartView` | token 统计图容器、摘要与图表模式切换                       |
 | `TokenLineChartPlot`  | 折线图绘制（支持 hour/day 粒度，hover 交互）                |
+| `TokenBarChartPlot`   | 堆叠直方图绘制；未选中时每个时间桶按图例顺序堆叠统计项      |
 | `TokenMetricView`     | 统计摘要数字（总量、日均、峰值等）                          |
-| `MeasuredScrollView`  | 自适应高度滚动容器，最大高度为屏幕 2/3                      |
+| `MeasuredScrollView`  | 自适应高度滚动容器，最大高度为屏幕可用高度的 75%             |
 
 ### 7.2 SettingsView
 
@@ -360,7 +363,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | 视图 / 组件                       | 职责                                                                            |
 | --------------------------------- | ------------------------------------------------------------------------------- |
 | `SettingsView`                    | 顶层骨架：sidebar + detail，三个 tab（通用/插件/关于）                          |
-| `GeneralSettingsView`             | 开机启动、语言、展示模式                                                        |
+| `GeneralSettingsView`             | 开机启动、语言、展示模式、图表模式                                              |
 | `PluginSettingsView`              | 插件列表（拖拽排序）+ 详情面板（draft 机制编辑）                                |
 | `PluginSettingsCard`              | 单个插件详情卡片：参数表单、启用/禁用、保存/重置                                |
 | `PluginParameterField`            | 按参数类型渲染对应输入控件（text/secret/integer/boolean/choice/directory/file） |

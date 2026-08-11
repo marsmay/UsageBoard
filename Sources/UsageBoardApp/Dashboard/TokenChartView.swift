@@ -4,6 +4,7 @@ import UsageBoardCore
 struct TokenUsageChartView: View {
     var chart: PluginChart
     var language: AppLanguage
+    var chartMode: ChartMode
     @State private var selectedSeries: String?
     private var strings: AppLocalization {
         .shared
@@ -34,6 +35,14 @@ struct TokenUsageChartView: View {
         guard let selectedSeries else { return filtered }
         let selected = filtered.filter { $0.name == selectedSeries }
         return selected.isEmpty ? filtered : selected
+    }
+
+    private var visibleBarSeries: [TokenChartSeries] {
+        TokenBarChartModel.series(
+            all: series,
+            selectedSeriesName: selectedSeries,
+            totalSeriesName: strings.text(.totalTokenUsage)
+        )
     }
 
     private var modelSummaries: [TokenModelSummary] {
@@ -104,13 +113,24 @@ struct TokenUsageChartView: View {
                 GeometryReader { viewport in
                     ScrollView(.horizontal, showsIndicators: false) {
                         let resolvedWidth = resolvedChartWidth(for: viewport.size.width)
-                        TokenLineChartPlot(
-                            buckets: chart.buckets,
-                            series: visibleSeries,
-                            maxValue: max(visibleSeries.flatMap(\.values).max() ?? 0, 1),
-                            visibleWidth: viewport.size.width
-                        )
-                        .frame(width: resolvedWidth, height: 170)
+                        switch chartMode {
+                        case .line:
+                            TokenLineChartPlot(
+                                buckets: chart.buckets,
+                                series: visibleSeries,
+                                maxValue: max(visibleSeries.flatMap(\.values).max() ?? 0, 1),
+                                visibleWidth: viewport.size.width
+                            )
+                            .frame(width: resolvedWidth, height: 170)
+                        case .bar:
+                            TokenBarChartPlot(
+                                buckets: chart.buckets,
+                                series: visibleBarSeries,
+                                maxValue: max(TokenBarChartModel.maximum(for: visibleBarSeries), 1),
+                                visibleWidth: viewport.size.width
+                            )
+                            .frame(width: resolvedWidth, height: 170)
+                        }
                     }
                     .coordinateSpace(name: "TokenChartScroll")
                 }
@@ -126,6 +146,10 @@ struct TokenUsageChartView: View {
     }
 
     private func resolvedChartWidth(for visibleWidth: CGFloat) -> CGFloat {
+        if chartMode == .bar {
+            let step: CGFloat = chart.bucketUnit == "day" ? 14 : 30
+            return max(visibleWidth, CGFloat(chart.buckets.count) * step + 50)
+        }
         if chart.bucketUnit == "day" {
             return max(visibleWidth, 320)
         }
@@ -171,6 +195,33 @@ struct TokenChartSeries: Identifiable {
     var values: [Double]
 
     var id: String { name }
+}
+
+enum TokenBarChartModel {
+    static func series(
+        all: [TokenChartSeries],
+        selectedSeriesName: String?,
+        totalSeriesName: String
+    ) -> [TokenChartSeries] {
+        let nonEmpty = all.filter { $0.values.contains(where: { $0 > 0 }) }
+        if let selectedSeriesName,
+           let selected = nonEmpty.first(where: { $0.name == selectedSeriesName }) {
+            return [selected]
+        }
+
+        let components = nonEmpty.filter { $0.name != totalSeriesName }
+        return components.isEmpty ? nonEmpty.filter { $0.name == totalSeriesName } : components
+    }
+
+    static func maximum(for series: [TokenChartSeries]) -> Double {
+        let valueCount = series.map(\.values.count).max() ?? 0
+        return (0..<valueCount).map { index in
+            series.reduce(0) { total, item in
+                guard item.values.indices.contains(index) else { return total }
+                return total + max(item.values[index], 0)
+            }
+        }.max() ?? 0
+    }
 }
 
 struct TokenMetricView: View {

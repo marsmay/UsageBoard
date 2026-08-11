@@ -21,10 +21,18 @@ public enum DisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 }
 
+public enum ChartMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case line
+    case bar
+
+    public var id: String { rawValue }
+}
+
 public struct AppConfiguration: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var language: AppLanguage
     public var overviewDisplayMode: DisplayMode
+    public var chartMode: ChartMode
     public var plugins: [PluginConfiguration]
     public var launchAtLogin: Bool
 
@@ -32,12 +40,14 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         schemaVersion: Int = 1,
         language: AppLanguage = .zhHans,
         overviewDisplayMode: DisplayMode = .tabs,
+        chartMode: ChartMode = .line,
         plugins: [PluginConfiguration] = [],
         launchAtLogin: Bool = false
     ) {
         self.schemaVersion = schemaVersion
         self.language = language
         self.overviewDisplayMode = overviewDisplayMode
+        self.chartMode = chartMode
         self.plugins = plugins
         self.launchAtLogin = launchAtLogin
     }
@@ -46,6 +56,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         case schemaVersion
         case language
         case overviewDisplayMode
+        case chartMode
         case plugins
         case launchAtLogin
     }
@@ -55,6 +66,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhHans
         overviewDisplayMode = try container.decodeIfPresent(DisplayMode.self, forKey: .overviewDisplayMode) ?? .tabs
+        chartMode = try container.decodeIfPresent(ChartMode.self, forKey: .chartMode) ?? .line
         plugins = try container.decodeIfPresent([PluginConfiguration].self, forKey: .plugins) ?? []
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
     }

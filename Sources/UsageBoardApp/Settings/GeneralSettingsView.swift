@@ -35,6 +35,19 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            SettingsRow(label: strings.text(.chartMode), hint: strings.text(.chartModeHint)) {
+                Picker("", selection: $store.configuration.chartMode) {
+                    ForEach(ChartMode.allCases) { mode in
+                        Text(strings.chartModeName(mode)).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 120, alignment: .leading)
+                .onChange(of: store.configuration.chartMode) { _ in
+                    store.persistConfiguration()
+                }
+            }
+
             SettingsRow(label: strings.text(.language)) {
                 Picker("", selection: $store.configuration.language) {
                     ForEach(AppLanguage.allCases) { language in

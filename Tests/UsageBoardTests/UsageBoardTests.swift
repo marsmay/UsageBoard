@@ -11,6 +11,7 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertEqual(configuration.schemaVersion, 1)
         XCTAssertEqual(configuration.language, .zhHans)
         XCTAssertEqual(configuration.overviewDisplayMode, .tabs)
+        XCTAssertEqual(configuration.chartMode, .line)
         XCTAssertEqual(configuration.plugins.first?.refreshIntervalSeconds, 300)
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-\(UUID().uuidString).json")
@@ -19,7 +20,16 @@ final class UsageBoardTests: XCTestCase {
         let reloaded = try store.load()
         let savedText = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(savedText.contains(#""language" : "zh-Hans""#))
+        XCTAssertTrue(savedText.contains(#""chartMode" : "line""#))
         XCTAssertEqual(reloaded.plugins.first?.name, "A")
+    }
+
+    func testConfigurationPersistsBarChartMode() throws {
+        let configuration = AppConfiguration(chartMode: .bar)
+        let data = try UsageBoardJSON.encoder().encode(configuration)
+        let decoded = try UsageBoardJSON.decoder().decode(AppConfiguration.self, from: data)
+
+        XCTAssertEqual(decoded.chartMode, .bar)
     }
 
     func testPluginsDirectoryIsNextToConfigurationFile() {
