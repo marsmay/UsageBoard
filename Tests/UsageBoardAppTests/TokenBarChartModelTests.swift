@@ -57,6 +57,18 @@ final class TokenBarChartModelTests: XCTestCase {
         XCTAssertEqual(visible.map(\.name), ["total"])
     }
 
+    func testSeriesCanUseShortTooltipNameWithoutChangingSelectionName() {
+        let series = TokenChartSeries(
+            name: "glm-4.5 用量",
+            tooltipName: "glm-4.5",
+            color: .blue,
+            values: [10]
+        )
+
+        XCTAssertEqual(series.name, "glm-4.5 用量")
+        XCTAssertEqual(series.tooltipName, "glm-4.5")
+    }
+
     private func makeSeries(_ name: String, _ values: [Double]) -> TokenChartSeries {
         TokenChartSeries(name: name, color: .blue, values: values)
     }

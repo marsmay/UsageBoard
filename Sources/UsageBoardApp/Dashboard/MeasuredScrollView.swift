@@ -6,6 +6,14 @@ struct MeasuredScrollView<Content: View>: View {
     @ViewBuilder var content: Content
     @State private var contentHeight: CGFloat = 0
 
+    private var resolvedMaximumHeight: CGFloat {
+        max(maxHeight, 0)
+    }
+
+    private var resolvedMinimumHeight: CGFloat {
+        min(minHeight, resolvedMaximumHeight)
+    }
+
     var body: some View {
         ScrollView {
             content
@@ -15,7 +23,11 @@ struct MeasuredScrollView<Content: View>: View {
                     }
                 )
         }
-        .frame(height: contentHeight > 0 ? min(max(contentHeight, minHeight), maxHeight) : minHeight)
+        .frame(
+            height: contentHeight > 0
+                ? min(max(contentHeight, resolvedMinimumHeight), resolvedMaximumHeight)
+                : resolvedMinimumHeight
+        )
         .onPreferenceChange(ContentHeightKey.self) { height in
             if height > 0, abs(contentHeight - height) > 1 {
                 contentHeight = height

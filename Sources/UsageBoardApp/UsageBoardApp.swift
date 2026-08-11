@@ -36,15 +36,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             return
         }
         let newPopover = NSPopover()
-        newPopover.contentSize = NSSize(width: 380, height: 400)
+        let visibleScreenHeight = button.window?.screen?.visibleFrame.height
+            ?? NSScreen.main?.visibleFrame.height
+            ?? 800
+        let maximumHeight = PopoverLayout.maximumHeight(for: visibleScreenHeight)
+        newPopover.contentSize = NSSize(
+            width: PopoverLayout.width,
+            height: min(PopoverLayout.initialHeight, maximumHeight)
+        )
         newPopover.behavior = .applicationDefined
         newPopover.animates = false
         newPopover.delegate = self
         newPopover.appearance = NSApp.effectiveAppearance
         let hostingController = NSHostingController(
-            rootView: OverviewView(store: store)
+            rootView: OverviewView(store: store, maximumHeight: maximumHeight)
                 .environment(\.openSettings) { [weak self] in self?.openSettings() }
-                .frame(width: 380)
+                .frame(width: PopoverLayout.width)
                 .background(Color(nsColor: .windowBackgroundColor))
         )
         hostingController.view.appearance = NSApp.effectiveAppearance

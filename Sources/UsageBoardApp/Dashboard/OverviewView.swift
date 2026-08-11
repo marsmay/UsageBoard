@@ -17,33 +17,77 @@ extension EnvironmentValues {
 
 struct OverviewView: View {
     @ObservedObject var store: UsageBoardStore
+    var maximumHeight: CGFloat
+    @State private var headerHeight: CGFloat = 45
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                AppIconSquircle(size: 22)
-                Text("UsageBoard")
-                    .font(UB.Font.popoverTitle)
-                    .tracking(-0.1)
-                Spacer()
-                Button {
-                    store.refreshAll()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 24, height: 24)
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    AppIconSquircle(size: 22)
+                    Text("UsageBoard")
+                        .font(UB.Font.popoverTitle)
+                        .tracking(-0.1)
+                    Spacer()
+                    Button {
+                        store.refreshAll()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.borderless)
+                    SettingsButton(iconSize: 13, buttonSize: 24)
+                    QuitButton(language: store.activeLanguage, iconSize: 13, buttonSize: 24)
                 }
-                .buttonStyle(.borderless)
-                SettingsButton(iconSize: 13, buttonSize: 24)
-                QuitButton(language: store.activeLanguage, iconSize: 13, buttonSize: 24)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+
+                Divider()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: PopoverHeaderHeightKey.self, value: proxy.size.height)
+                }
+            )
 
-            Divider()
-
-            DashboardView(store: store, mode: store.configuration.overviewDisplayMode)
+            DashboardView(
+                store: store,
+                mode: store.configuration.overviewDisplayMode,
+                maximumHeight: PopoverLayout.dashboardMaximumHeight(
+                    popoverMaximumHeight: maximumHeight,
+                    headerHeight: headerHeight
+                )
+            )
         }
+        .frame(maxHeight: maximumHeight)
+        .onPreferenceChange(PopoverHeaderHeightKey.self) { height in
+            if height > 0, abs(headerHeight - height) > 0.5 {
+                headerHeight = height
+            }
+        }
+    }
+}
+
+enum PopoverLayout {
+    static let width: CGFloat = 380
+    static let initialHeight: CGFloat = 400
+    static let maximumHeightRatio: CGFloat = 0.75
+
+    static func maximumHeight(for visibleScreenHeight: CGFloat) -> CGFloat {
+        max(visibleScreenHeight, 0) * maximumHeightRatio
+    }
+
+    static func dashboardMaximumHeight(popoverMaximumHeight: CGFloat, headerHeight: CGFloat) -> CGFloat {
+        max(popoverMaximumHeight - max(headerHeight, 0), 0)
+    }
+}
+
+private struct PopoverHeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

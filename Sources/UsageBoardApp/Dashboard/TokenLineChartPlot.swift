@@ -122,7 +122,7 @@ struct TokenLineChartPlot: View {
 
     private func hoverOverlay(index: Int, in plotRect: CGRect, size: CGSize, chartMinX: CGFloat) -> some View {
         let x = xPosition(for: index, in: plotRect)
-        let rows = series.map { ($0.name, $0.color, valueAt(index, in: $0)) }
+        let rows = series.map { ($0.id, $0.tooltipName, $0.color, valueAt(index, in: $0)) }
         let tooltipWidth: CGFloat = 178
         let tooltipMargin: CGFloat = 8
         let tooltipGap: CGFloat = 12
@@ -162,14 +162,14 @@ struct TokenLineChartPlot: View {
                 ForEach(rows, id: \.0) { row in
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(row.1)
+                            .fill(row.2)
                             .frame(width: 6, height: 6)
-                        Text(row.0)
+                        Text(row.1)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         Spacer(minLength: 4)
-                        Text(formattedTokenNumber(row.2).compact)
+                        Text(formattedTokenNumber(row.3).compact)
                             .font(.caption)
                             .foregroundStyle(.primary)
                             .monospacedDigit()

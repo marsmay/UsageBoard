@@ -90,6 +90,7 @@ UsageBoard 默认使用：
   "schemaVersion": 1,
   "language": "zh-Hans",
   "overviewDisplayMode": "tabs",
+  "chartMode": "line",
   "launchAtLogin": false,
   "plugins": [
     {
@@ -141,6 +142,7 @@ UsageBoard 默认使用：
 说明：
 
 - `overviewDisplayMode` 支持 `grouped` 和 `tabs`。
+- `chartMode` 支持 `line` 和 `bar`。
 - `language` 支持 `zh-Hans` 和 `en`，修改后重启生效。
 - `launchAtLogin` 控制开机启动。
 - `plugins[].stateID` 是插件缓存 ID，会持久化。

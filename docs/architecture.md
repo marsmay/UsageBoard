@@ -354,7 +354,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | `TokenLineChartPlot`  | 折线图绘制（支持 hour/day 粒度，hover 交互）                |
 | `TokenBarChartPlot`   | 堆叠直方图绘制；未选中时每个时间桶按图例顺序堆叠统计项      |
 | `TokenMetricView`     | 统计摘要数字（总量、日均、峰值等）                          |
-| `MeasuredScrollView`  | 自适应高度滚动容器，最大高度为屏幕可用高度的 75%             |
+| `MeasuredScrollView`  | 自适应高度滚动容器，按调用方传入的高度预算封顶               |
 
 ### 7.2 SettingsView
 
@@ -542,7 +542,7 @@ UsageBoardStore.init()
 ## 12. UI 尺寸参考
 
 - 设置窗口：初始 800×520，最小 800×480，可调整大小。
-- Menu bar popover：宽度固定 380，高度自适应内容，最大为屏幕可见高度的 2/3。
+- Menu bar popover：宽度固定 380，高度自适应内容，最大为状态栏所在屏幕可用高度的 75%。
 - 进度条高度接近文字行高，数值显示在进度条中间。
 
 ---

@@ -21,6 +21,7 @@ struct TokenUsageChartView: View {
         output.append(contentsOf: modelSummaries.map { summary in
             TokenChartSeries(
                 name: strings.usageSuffix(for: summary.name),
+                tooltipName: summary.name,
                 color: summary.color,
                 values: chart.buckets.map { bucket in
                     bucket.segments.first(where: { $0.model == summary.name })?.tokens ?? 0
@@ -191,10 +192,18 @@ struct TokenModelSummary: Identifiable {
 
 struct TokenChartSeries: Identifiable {
     var name: String
+    var tooltipName: String
     var color: Color
     var values: [Double]
 
     var id: String { name }
+
+    init(name: String, tooltipName: String? = nil, color: Color, values: [Double]) {
+        self.name = name
+        self.tooltipName = tooltipName ?? name
+        self.color = color
+        self.values = values
+    }
 }
 
 enum TokenBarChartModel {

@@ -4,10 +4,7 @@ import UsageBoardCore
 struct DashboardView: View {
     @ObservedObject var store: UsageBoardStore
     var mode: DisplayMode
-
-    private var maxHeight: CGFloat {
-        (NSScreen.main?.visibleFrame.height ?? 800) * 0.75
-    }
+    var maximumHeight: CGFloat
 
     private var enabledPlugins: [PluginConfiguration] {
         store.configuration.plugins.filter(\.enabled)
@@ -28,7 +25,7 @@ struct DashboardView: View {
             } else {
                 switch mode {
                 case .grouped:
-                    MeasuredScrollView(maxHeight: maxHeight) {
+                    MeasuredScrollView(maxHeight: maximumHeight) {
                         VStack(spacing: 8) {
                             ForEach(enabledPlugins) { plugin in
                                 PluginGroupView(
@@ -45,52 +42,54 @@ struct DashboardView: View {
                     }
                     .background(UB.Canvas.canvasBackground)
                 case .tabs:
-                    VStack(spacing: 0) {
-                        ScrollViewReader { proxy in
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(enabledPlugins) { plugin in
-                                        Button {
-                                            store.selectedTabID = plugin.id
-                                        } label: {
-                                            Text(store.snapshot(for: plugin).displayName)
-                                                .font(.callout.weight(store.selectedTabID == plugin.id ? .semibold : .regular))
-                                                .foregroundStyle(store.selectedTabID == plugin.id ? .primary : .secondary)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 4)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 6)
-                                                        .fill(store.selectedTabID == plugin.id ? Color(nsColor: .selectedControlColor) : .clear)
-                                                )
+                    MeasuredScrollView(maxHeight: maximumHeight) {
+                        VStack(spacing: 0) {
+                            ScrollViewReader { proxy in
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 6) {
+                                        ForEach(enabledPlugins) { plugin in
+                                            Button {
+                                                store.selectedTabID = plugin.id
+                                            } label: {
+                                                Text(store.snapshot(for: plugin).displayName)
+                                                    .font(.callout.weight(store.selectedTabID == plugin.id ? .semibold : .regular))
+                                                    .foregroundStyle(store.selectedTabID == plugin.id ? .primary : .secondary)
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 6)
+                                                            .fill(store.selectedTabID == plugin.id ? Color(nsColor: .selectedControlColor) : .clear)
+                                                    )
+                                            }
+                                            .buttonStyle(.plain)
+                                            .id(plugin.id)
                                         }
-                                        .buttonStyle(.plain)
-                                        .id(plugin.id)
                                     }
+                                    .padding(.horizontal, 10)
                                 }
-                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .onAppear {
+                                    scrollToSelectedTab(with: proxy)
+                                }
+                                .onChange(of: store.selectedTabID) { _ in
+                                    scrollToSelectedTab(with: proxy)
+                                }
+                                .onChange(of: enabledPluginIDs) { _ in
+                                    scrollToSelectedTab(with: proxy)
+                                }
                             }
-                            .padding(.vertical, 6)
-                            .onAppear {
-                                scrollToSelectedTab(with: proxy)
+                            Divider()
+                            if let plugin = selectedPlugin {
+                                PluginGroupView(
+                                    snapshot: store.snapshot(for: plugin),
+                                    language: store.activeLanguage,
+                                    chartMode: store.configuration.chartMode,
+                                    nextRefreshAt: store.nextRefreshAt[plugin.id]
+                                ) {
+                                    store.refresh(pluginID: plugin.id, force: true)
+                                }
+                                .padding(10)
                             }
-                            .onChange(of: store.selectedTabID) { _ in
-                                scrollToSelectedTab(with: proxy)
-                            }
-                            .onChange(of: enabledPluginIDs) { _ in
-                                scrollToSelectedTab(with: proxy)
-                            }
-                        }
-                        Divider()
-                        if let plugin = selectedPlugin {
-                            PluginGroupView(
-                                snapshot: store.snapshot(for: plugin),
-                                language: store.activeLanguage,
-                                chartMode: store.configuration.chartMode,
-                                nextRefreshAt: store.nextRefreshAt[plugin.id]
-                            ) {
-                                store.refresh(pluginID: plugin.id, force: true)
-                            }
-                            .padding(10)
                         }
                     }
                 }
