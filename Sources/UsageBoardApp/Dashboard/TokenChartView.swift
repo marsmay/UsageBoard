@@ -233,12 +233,17 @@ struct TokenUsageChartView: View {
     }
 
     private func tooltip(at index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let rows = TokenChartTooltipModel.series(
+            at: index,
+            from: tooltipSeries
+        )
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text(chart.buckets[index].id)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
-            ForEach(tooltipSeries) { item in
+            ForEach(rows) { item in
                 HStack(spacing: 5) {
                     Circle()
                         .fill(item.color)
@@ -301,6 +306,17 @@ struct TokenUsageChartView: View {
         let hue = Double((index - palette.count) % 24) / 24.0
         let brightness = 0.62 + Double((index / 24) % 3) * 0.12
         return Color(hue: hue, saturation: 0.72, brightness: min(brightness, 0.86))
+    }
+}
+
+enum TokenChartTooltipModel {
+    static func series(
+        at index: Int,
+        from series: [TokenChartSeries]
+    ) -> [TokenChartSeries] {
+        series.filter { item in
+            item.values.indices.contains(index) && item.values[index] > 0
+        }
     }
 }
 

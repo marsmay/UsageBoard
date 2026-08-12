@@ -111,6 +111,30 @@ final class TokenBarChartModelTests: XCTestCase {
         XCTAssertEqual(visible.map(\.name), ["second"])
     }
 
+    func testTooltipHidesSeriesWhoseCurrentBucketIsZero() {
+        let series = [
+            makeSeries("total", [10, 20]),
+            makeSeries("first", [0, 8]),
+            makeSeries("second", [10, 12]),
+        ]
+
+        let visible = TokenChartTooltipModel.series(at: 0, from: series)
+
+        XCTAssertEqual(visible.map(\.name), ["total", "second"])
+    }
+
+    func testTooltipDoesNotUseValuesFromOtherBuckets() {
+        let series = [
+            makeSeries("first", [0, 8]),
+            makeSeries("second", [10, 0]),
+        ]
+
+        XCTAssertEqual(
+            TokenChartTooltipModel.series(at: 1, from: series).map(\.name),
+            ["first"]
+        )
+    }
+
     private func makeSeries(_ name: String, _ values: [Double]) -> TokenChartSeries {
         TokenChartSeries(name: name, color: .blue, values: values)
     }
