@@ -118,7 +118,11 @@ final class TokenBarChartModelTests: XCTestCase {
             makeSeries("second", [10, 12]),
         ]
 
-        let visible = TokenChartTooltipModel.series(at: 0, from: series)
+        let visible = TokenChartTooltipModel.series(
+            at: 0,
+            from: series,
+            fallback: series[0]
+        )
 
         XCTAssertEqual(visible.map(\.name), ["total", "second"])
     }
@@ -130,9 +134,30 @@ final class TokenBarChartModelTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            TokenChartTooltipModel.series(at: 1, from: series).map(\.name),
+            TokenChartTooltipModel.series(
+                at: 1,
+                from: series,
+                fallback: makeSeries("total", [10, 8])
+            ).map(\.name),
             ["first"]
         )
+    }
+
+    func testTooltipFallsBackToTotalWhenCurrentBucketHasNoData() {
+        let total = makeSeries("total", [0])
+        let series = [
+            makeSeries("first", [0]),
+            makeSeries("second", [0]),
+        ]
+
+        let visible = TokenChartTooltipModel.series(
+            at: 0,
+            from: series,
+            fallback: total
+        )
+
+        XCTAssertEqual(visible.map(\.name), ["total"])
+        XCTAssertEqual(visible.first?.values, [0])
     }
 
     private func makeSeries(_ name: String, _ values: [Double]) -> TokenChartSeries {

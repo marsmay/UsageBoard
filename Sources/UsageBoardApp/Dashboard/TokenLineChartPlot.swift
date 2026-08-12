@@ -7,6 +7,7 @@ struct TokenLineChartPlot: View {
     var series: [TokenChartSeries]
     var maxValue: Double
     var hoverIndex: Int?
+    var onHover: (TokenChartHover?) -> Void
 
     private let leadingWidth = TokenChartLayout.leadingAxisWidth
     private let trailingPadding: CGFloat = 20
@@ -20,6 +21,7 @@ struct TokenLineChartPlot: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let chartFrame = proxy.frame(in: .named("TokenChartViewport"))
             let plotRect = CGRect(
                 x: leadingWidth,
                 y: topPadding,
@@ -37,6 +39,21 @@ struct TokenLineChartPlot: View {
 
                 if let hoverIndex, buckets.indices.contains(hoverIndex) {
                     hoverIndicator(index: hoverIndex, in: plotRect)
+                }
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    onHover(TokenChartHoverModel.hover(
+                        at: location,
+                        in: plotRect,
+                        chartMinX: chartFrame.minX,
+                        bucketCount: buckets.count,
+                        mode: .line
+                    ))
+                case .ended:
+                    onHover(nil)
                 }
             }
         }
@@ -191,27 +208,13 @@ enum TokenChartLayout {
 enum TokenChartHoverModel {
     static func hover(
         at location: CGPoint,
-        contentMinX: CGFloat,
-        contentWidth: CGFloat,
+        in plotRect: CGRect,
+        chartMinX: CGFloat,
         bucketCount: Int,
         mode: ChartMode
     ) -> TokenChartHover? {
         guard bucketCount > 0 else { return nil }
-
-        let plotRect = CGRect(
-            x: TokenChartLayout.leadingAxisWidth,
-            y: TokenChartLayout.topPadding,
-            width: max(
-                contentWidth - TokenChartLayout.leadingAxisWidth - TokenChartLayout.trailingPadding,
-                1
-            ),
-            height: max(
-                TokenChartLayout.height - TokenChartLayout.topPadding - TokenChartLayout.bottomHeight,
-                1
-            )
-        )
-        let contentLocation = CGPoint(x: location.x - contentMinX, y: location.y)
-        guard plotRect.contains(contentLocation) else { return nil }
+        guard plotRect.contains(location) else { return nil }
 
         let index: Int
         switch mode {
@@ -219,7 +222,7 @@ enum TokenChartHoverModel {
             if bucketCount == 1 {
                 index = 0
             } else {
-                let ratio = min(max((contentLocation.x - plotRect.minX) / plotRect.width, 0), 1)
+                let ratio = min(max((location.x - plotRect.minX) / plotRect.width, 0), 1)
                 index = min(
                     max(Int((ratio * CGFloat(bucketCount - 1)).rounded()), 0),
                     bucketCount - 1
@@ -228,7 +231,7 @@ enum TokenChartHoverModel {
         case .bar:
             let slotWidth = plotRect.width / CGFloat(bucketCount)
             index = min(
-                max(Int((contentLocation.x - plotRect.minX) / slotWidth), 0),
+                max(Int((location.x - plotRect.minX) / slotWidth), 0),
                 bucketCount - 1
             )
         }
@@ -243,7 +246,7 @@ enum TokenChartHoverModel {
             anchorContentX = plotRect.minX
                 + (CGFloat(index) + 0.5) * plotRect.width / CGFloat(bucketCount)
         }
-        return TokenChartHover(index: index, anchorX: contentMinX + anchorContentX)
+        return TokenChartHover(index: index, anchorX: chartMinX + anchorContentX)
     }
 }
 

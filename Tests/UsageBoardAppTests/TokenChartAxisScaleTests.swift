@@ -61,11 +61,12 @@ final class TokenChartAxisScaleTests: XCTestCase {
         XCTAssertEqual(TokenChartLayout.tooltipOffsetY, -8)
     }
 
-    func testLineHoverUsesViewportLocationAndScrollOffset() throws {
+    func testLineHoverUsesPlotLocalLocationAfterHorizontalScroll() throws {
+        let plotRect = CGRect(x: 40, y: 12, width: 340, height: 132)
         let hover = try XCTUnwrap(TokenChartHoverModel.hover(
-            at: CGPoint(x: 130, y: 80),
-            contentMinX: -100,
-            contentWidth: 400,
+            at: CGPoint(x: 230, y: 80),
+            in: plotRect,
+            chartMinX: -100,
             bucketCount: 5,
             mode: .line
         ))
@@ -74,31 +75,33 @@ final class TokenChartAxisScaleTests: XCTestCase {
         XCTAssertEqual(hover.anchorX, 110)
     }
 
-    func testBarHoverUsesBucketSlotsAfterHorizontalScroll() throws {
+    func testBarHoverUsesPlotLocalLocationAfterHorizontalScroll() throws {
+        let plotRect = CGRect(x: 40, y: 12, width: 340, height: 132)
         let hover = try XCTUnwrap(TokenChartHoverModel.hover(
-            at: CGPoint(x: 130, y: 80),
-            contentMinX: -100,
-            contentWidth: 400,
+            at: CGPoint(x: 230, y: 80),
+            in: plotRect,
+            chartMinX: -100,
             bucketCount: 10,
             mode: .bar
         ))
 
         XCTAssertEqual(hover.index, 5)
         XCTAssertEqual(hover.anchorX, 127)
+        XCTAssertLessThanOrEqual(abs(hover.anchorX - 130), 17)
     }
 
     func testHoverIgnoresAxisAndLabelsOutsidePlot() {
         XCTAssertNil(TokenChartHoverModel.hover(
             at: CGPoint(x: 20, y: 80),
-            contentMinX: 0,
-            contentWidth: 400,
+            in: CGRect(x: 40, y: 12, width: 340, height: 132),
+            chartMinX: 0,
             bucketCount: 5,
             mode: .line
         ))
         XCTAssertNil(TokenChartHoverModel.hover(
             at: CGPoint(x: 100, y: 160),
-            contentMinX: 0,
-            contentWidth: 400,
+            in: CGRect(x: 40, y: 12, width: 340, height: 132),
+            chartMinX: 0,
             bucketCount: 5,
             mode: .line
         ))

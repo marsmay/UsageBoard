@@ -7,6 +7,7 @@ struct TokenBarChartPlot: View {
     var series: [TokenChartSeries]
     var maxValue: Double
     var hoverIndex: Int?
+    var onHover: (TokenChartHover?) -> Void
 
     private let leadingWidth = TokenChartLayout.leadingAxisWidth
     private let trailingPadding: CGFloat = 20
@@ -20,6 +21,7 @@ struct TokenBarChartPlot: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let chartFrame = proxy.frame(in: .named("TokenChartViewport"))
             let plotRect = CGRect(
                 x: leadingWidth,
                 y: topPadding,
@@ -37,6 +39,21 @@ struct TokenBarChartPlot: View {
 
                 if let hoverIndex, buckets.indices.contains(hoverIndex) {
                     hoverIndicator(index: hoverIndex, in: plotRect)
+                }
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    onHover(TokenChartHoverModel.hover(
+                        at: location,
+                        in: plotRect,
+                        chartMinX: chartFrame.minX,
+                        bucketCount: buckets.count,
+                        mode: .bar
+                    ))
+                case .ended:
+                    onHover(nil)
                 }
             }
         }
