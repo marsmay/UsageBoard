@@ -48,4 +48,59 @@ final class TokenChartAxisScaleTests: XCTestCase {
         XCTAssertEqual(formattedAxisTokenNumber(1_500_000), "1.5M")
         XCTAssertEqual(formattedAxisTokenNumber(2_000_000_000), "2B")
     }
+
+    func testTooltipPrefersRightSideOfHoveredPoint() {
+        XCTAssertEqual(TokenChartLayout.tooltipOriginX(anchorX: 100, visibleWidth: 700), 112)
+    }
+
+    func testTooltipMovesLeftNearViewportTrailingEdge() {
+        XCTAssertEqual(TokenChartLayout.tooltipOriginX(anchorX: 650, visibleWidth: 700), 460)
+    }
+
+    func testTooltipCanExtendBeyondChartWithoutMovingItsLayout() {
+        XCTAssertEqual(TokenChartLayout.tooltipOffsetY, -8)
+    }
+
+    func testLineHoverUsesViewportLocationAndScrollOffset() throws {
+        let hover = try XCTUnwrap(TokenChartHoverModel.hover(
+            at: CGPoint(x: 130, y: 80),
+            contentMinX: -100,
+            contentWidth: 400,
+            bucketCount: 5,
+            mode: .line
+        ))
+
+        XCTAssertEqual(hover.index, 2)
+        XCTAssertEqual(hover.anchorX, 110)
+    }
+
+    func testBarHoverUsesBucketSlotsAfterHorizontalScroll() throws {
+        let hover = try XCTUnwrap(TokenChartHoverModel.hover(
+            at: CGPoint(x: 130, y: 80),
+            contentMinX: -100,
+            contentWidth: 400,
+            bucketCount: 10,
+            mode: .bar
+        ))
+
+        XCTAssertEqual(hover.index, 5)
+        XCTAssertEqual(hover.anchorX, 127)
+    }
+
+    func testHoverIgnoresAxisAndLabelsOutsidePlot() {
+        XCTAssertNil(TokenChartHoverModel.hover(
+            at: CGPoint(x: 20, y: 80),
+            contentMinX: 0,
+            contentWidth: 400,
+            bucketCount: 5,
+            mode: .line
+        ))
+        XCTAssertNil(TokenChartHoverModel.hover(
+            at: CGPoint(x: 100, y: 160),
+            contentMinX: 0,
+            contentWidth: 400,
+            bucketCount: 5,
+            mode: .line
+        ))
+    }
 }

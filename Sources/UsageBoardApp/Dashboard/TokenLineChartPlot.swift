@@ -6,8 +6,7 @@ struct TokenLineChartPlot: View {
     var buckets: [PluginChartBucket]
     var series: [TokenChartSeries]
     var maxValue: Double
-    var visibleWidth: CGFloat
-    @State private var hoverLocation: CGPoint?
+    var hoverIndex: Int?
 
     private let leadingWidth = TokenChartLayout.leadingAxisWidth
     private let trailingPadding: CGFloat = 20
@@ -21,14 +20,12 @@ struct TokenLineChartPlot: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            let chartFrame = proxy.frame(in: .named("TokenChartScroll"))
             let plotRect = CGRect(
                 x: leadingWidth,
                 y: topPadding,
                 width: max(size.width - leadingWidth - trailingPadding, 1),
                 height: max(size.height - topPadding - bottomHeight, 1)
             )
-            let hoverIndex = nearestBucketIndex(in: plotRect)
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 6)
@@ -38,17 +35,8 @@ struct TokenLineChartPlot: View {
                 xAxisLabels(in: plotRect)
                 lineSeries(in: plotRect)
 
-                if let hoverIndex {
-                    hoverOverlay(index: hoverIndex, in: plotRect, size: size, chartMinX: chartFrame.minX)
-                }
-            }
-            .contentShape(Rectangle())
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    hoverLocation = location
-                case .ended:
-                    hoverLocation = nil
+                if let hoverIndex, buckets.indices.contains(hoverIndex) {
+                    hoverIndicator(index: hoverIndex, in: plotRect)
                 }
             }
         }
@@ -126,26 +114,8 @@ struct TokenLineChartPlot: View {
         }
     }
 
-    private func hoverOverlay(index: Int, in plotRect: CGRect, size: CGSize, chartMinX: CGFloat) -> some View {
+    private func hoverIndicator(index: Int, in plotRect: CGRect) -> some View {
         let x = xPosition(for: index, in: plotRect)
-        let rows = series.map { ($0.id, $0.tooltipName, $0.color, valueAt(index, in: $0)) }
-        let tooltipWidth: CGFloat = 178
-        let tooltipMargin: CGFloat = 8
-        let tooltipGap: CGFloat = 12
-        let rightCenter = x + tooltipWidth / 2 + tooltipGap
-        let leftCenter = x - tooltipWidth / 2 - tooltipGap
-        let rightVisibleMax = chartMinX + rightCenter + tooltipWidth / 2
-        let leftVisibleMin = chartMinX + leftCenter - tooltipWidth / 2
-        let tooltipX: CGFloat
-        if rightVisibleMax <= visibleWidth - tooltipMargin {
-            tooltipX = rightCenter
-        } else if leftVisibleMin >= tooltipMargin {
-            tooltipX = leftCenter
-        } else {
-            let minCenter = tooltipMargin - chartMinX + tooltipWidth / 2
-            let maxCenter = visibleWidth - tooltipMargin - chartMinX - tooltipWidth / 2
-            tooltipX = min(max(rightCenter, minCenter), maxCenter)
-        }
 
         return ZStack(alignment: .topLeading) {
             Path { path in
@@ -159,35 +129,6 @@ struct TokenLineChartPlot: View {
                 .background(Circle().fill(.blue))
                 .frame(width: 8, height: 8)
                 .position(x: x, y: yPosition(for: buckets[index].total, in: plotRect))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(buckets[index].id)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                ForEach(rows, id: \.0) { row in
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(row.2)
-                            .frame(width: 6, height: 6)
-                        Text(row.1)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(formattedTokenNumber(row.3).compact)
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                            .monospacedDigit()
-                    }
-                }
-            }
-            .padding(8)
-            .frame(width: tooltipWidth)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
-            .position(x: tooltipX, y: plotRect.minY + 72)
         }
     }
 
@@ -212,13 +153,6 @@ struct TokenLineChartPlot: View {
         return plotRect.maxY - CGFloat(clamped) * plotRect.height
     }
 
-    private func nearestBucketIndex(in plotRect: CGRect) -> Int? {
-        guard let hoverLocation, plotRect.contains(hoverLocation), !buckets.isEmpty else { return nil }
-        guard buckets.count > 1 else { return 0 }
-        let ratio = min(max((hoverLocation.x - plotRect.minX) / plotRect.width, 0), 1)
-        return min(max(Int((ratio * CGFloat(buckets.count - 1)).rounded()), 0), buckets.count - 1)
-    }
-
     private func valueAt(_ index: Int, in series: TokenChartSeries) -> Double {
         guard series.values.indices.contains(index) else { return 0 }
         return series.values[index]
@@ -227,6 +161,95 @@ struct TokenLineChartPlot: View {
 
 enum TokenChartLayout {
     static let leadingAxisWidth: CGFloat = 40
+    static let trailingPadding: CGFloat = 20
+    static let topPadding: CGFloat = 12
+    static let bottomHeight: CGFloat = 26
+    static let height: CGFloat = 170
+    static let tooltipWidth: CGFloat = 178
+    static let tooltipMargin: CGFloat = 8
+    static let tooltipGap: CGFloat = 12
+    static let tooltipOffsetY: CGFloat = -tooltipMargin
+
+    static func tooltipOriginX(anchorX: CGFloat, visibleWidth: CGFloat) -> CGFloat {
+        let rightOrigin = anchorX + tooltipGap
+        if rightOrigin + tooltipWidth <= visibleWidth - tooltipMargin {
+            return rightOrigin
+        }
+
+        let leftOrigin = anchorX - tooltipGap - tooltipWidth
+        if leftOrigin >= tooltipMargin {
+            return leftOrigin
+        }
+
+        return min(
+            max(rightOrigin, tooltipMargin),
+            max(visibleWidth - tooltipMargin - tooltipWidth, tooltipMargin)
+        )
+    }
+}
+
+enum TokenChartHoverModel {
+    static func hover(
+        at location: CGPoint,
+        contentMinX: CGFloat,
+        contentWidth: CGFloat,
+        bucketCount: Int,
+        mode: ChartMode
+    ) -> TokenChartHover? {
+        guard bucketCount > 0 else { return nil }
+
+        let plotRect = CGRect(
+            x: TokenChartLayout.leadingAxisWidth,
+            y: TokenChartLayout.topPadding,
+            width: max(
+                contentWidth - TokenChartLayout.leadingAxisWidth - TokenChartLayout.trailingPadding,
+                1
+            ),
+            height: max(
+                TokenChartLayout.height - TokenChartLayout.topPadding - TokenChartLayout.bottomHeight,
+                1
+            )
+        )
+        let contentLocation = CGPoint(x: location.x - contentMinX, y: location.y)
+        guard plotRect.contains(contentLocation) else { return nil }
+
+        let index: Int
+        switch mode {
+        case .line:
+            if bucketCount == 1 {
+                index = 0
+            } else {
+                let ratio = min(max((contentLocation.x - plotRect.minX) / plotRect.width, 0), 1)
+                index = min(
+                    max(Int((ratio * CGFloat(bucketCount - 1)).rounded()), 0),
+                    bucketCount - 1
+                )
+            }
+        case .bar:
+            let slotWidth = plotRect.width / CGFloat(bucketCount)
+            index = min(
+                max(Int((contentLocation.x - plotRect.minX) / slotWidth), 0),
+                bucketCount - 1
+            )
+        }
+
+        let anchorContentX: CGFloat
+        switch mode {
+        case .line:
+            anchorContentX = bucketCount == 1
+                ? plotRect.midX
+                : plotRect.minX + CGFloat(index) / CGFloat(bucketCount - 1) * plotRect.width
+        case .bar:
+            anchorContentX = plotRect.minX
+                + (CGFloat(index) + 0.5) * plotRect.width / CGFloat(bucketCount)
+        }
+        return TokenChartHover(index: index, anchorX: contentMinX + anchorContentX)
+    }
+}
+
+struct TokenChartHover: Equatable {
+    var index: Int
+    var anchorX: CGFloat
 }
 
 struct TokenChartAxisScale: Equatable {

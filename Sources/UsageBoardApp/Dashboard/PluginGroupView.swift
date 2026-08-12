@@ -86,8 +86,10 @@ struct PluginGroupView: View {
                 }
             }
         }
-        .background(UB.Canvas.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: UB.Radius.card, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: UB.Radius.card, style: .continuous)
+                .fill(UB.Canvas.cardBackground)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: UB.Radius.card, style: .continuous)
                 .stroke(UB.Canvas.separator.opacity(0.7), lineWidth: 0.5)

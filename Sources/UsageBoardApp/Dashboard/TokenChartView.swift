@@ -6,6 +6,9 @@ struct TokenUsageChartView: View {
     var language: AppLanguage
     var chartMode: ChartMode
     @State private var selectedSeries: String?
+    @State private var chartHover: TokenChartHover?
+    @State private var chartHoverLocation: CGPoint?
+    @State private var chartContentMinX: CGFloat = 0
     private var strings: AppLocalization {
         .shared
     }
@@ -14,6 +17,7 @@ struct TokenUsageChartView: View {
         var output = [
             TokenChartSeries(
                 name: strings.text(.totalTokenUsage),
+                tooltipName: strings.text(.chartTooltipTotal),
                 color: .blue,
                 values: chart.buckets.map(\.total)
             )
@@ -43,6 +47,13 @@ struct TokenUsageChartView: View {
             all: series,
             selectedSeriesName: selectedSeries,
             totalSeriesName: strings.text(.totalTokenUsage)
+        )
+    }
+
+    private var visibleBarTooltipSeries: [TokenChartSeries] {
+        TokenBarChartModel.tooltipSeries(
+            all: series,
+            selectedSeriesName: selectedSeries
         )
     }
 
@@ -112,30 +123,83 @@ struct TokenUsageChartView: View {
                 }
 
                 GeometryReader { viewport in
+                    let resolvedWidth = resolvedChartWidth(for: viewport.size.width)
+                    let resolvedHover = validHover
                     ScrollView(.horizontal, showsIndicators: false) {
-                        let resolvedWidth = resolvedChartWidth(for: viewport.size.width)
-                        switch chartMode {
-                        case .line:
-                            TokenLineChartPlot(
-                                buckets: chart.buckets,
-                                series: visibleSeries,
-                                maxValue: max(visibleSeries.flatMap(\.values).max() ?? 0, 1),
-                                visibleWidth: viewport.size.width
+                        Group {
+                            switch chartMode {
+                            case .line:
+                                TokenLineChartPlot(
+                                    buckets: chart.buckets,
+                                    series: visibleSeries,
+                                    maxValue: max(visibleSeries.flatMap(\.values).max() ?? 0, 1),
+                                    hoverIndex: resolvedHover?.index
+                                )
+                                .frame(width: resolvedWidth, height: TokenChartLayout.height)
+                            case .bar:
+                                TokenBarChartPlot(
+                                    buckets: chart.buckets,
+                                    series: visibleBarSeries,
+                                    maxValue: max(TokenBarChartModel.maximum(for: visibleBarSeries), 1),
+                                    hoverIndex: resolvedHover?.index
+                                )
+                                .frame(width: resolvedWidth, height: TokenChartLayout.height)
+                            }
+                        }
+                        .background(
+                            GeometryReader { content in
+                                Color.clear.preference(
+                                    key: TokenChartContentMinXPreferenceKey.self,
+                                    value: content.frame(in: .named("TokenChartViewport")).minX
+                                )
+                            }
+                        )
+                    }
+                    .coordinateSpace(name: "TokenChartViewport")
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            chartHoverLocation = location
+                            updateChartHover(
+                                at: location,
+                                contentMinX: chartContentMinX,
+                                contentWidth: resolvedWidth
                             )
-                            .frame(width: resolvedWidth, height: 170)
-                        case .bar:
-                            TokenBarChartPlot(
-                                buckets: chart.buckets,
-                                series: visibleBarSeries,
-                                maxValue: max(TokenBarChartModel.maximum(for: visibleBarSeries), 1),
-                                visibleWidth: viewport.size.width
-                            )
-                            .frame(width: resolvedWidth, height: 170)
+                        case .ended:
+                            chartHoverLocation = nil
+                            chartHover = nil
                         }
                     }
-                    .coordinateSpace(name: "TokenChartScroll")
+                    .onPreferenceChange(TokenChartContentMinXPreferenceKey.self) { minX in
+                        chartContentMinX = minX
+                        if let chartHoverLocation {
+                            updateChartHover(
+                                at: chartHoverLocation,
+                                contentMinX: minX,
+                                contentWidth: resolvedWidth
+                            )
+                        }
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        tooltip(at: resolvedHover?.index ?? chart.buckets.startIndex)
+                            .offset(
+                                x: TokenChartLayout.tooltipOriginX(
+                                    anchorX: resolvedHover?.anchorX ?? TokenChartLayout.tooltipMargin,
+                                    visibleWidth: viewport.size.width
+                                ),
+                                y: TokenChartLayout.tooltipOffsetY
+                            )
+                            .opacity(resolvedHover == nil ? 0 : 1)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(resolvedHover == nil)
+                    }
                 }
-                .frame(height: 170)
+                .frame(height: TokenChartLayout.height)
+                .onChange(of: chartMode) { _ in
+                    chartHover = nil
+                    chartHoverLocation = nil
+                }
             } else {
                 Text(chart.message ?? strings.text(.noStatsData))
                     .font(.caption)
@@ -144,6 +208,64 @@ struct TokenUsageChartView: View {
                     .padding(.vertical, 10)
             }
         }
+    }
+
+    private var tooltipSeries: [TokenChartSeries] {
+        chartMode == .line ? visibleSeries : visibleBarTooltipSeries
+    }
+
+    private var validHover: TokenChartHover? {
+        guard let chartHover,
+              chart.buckets.indices.contains(chartHover.index) else { return nil }
+        return chartHover
+    }
+
+    private func updateChartHover(at location: CGPoint, contentMinX: CGFloat, contentWidth: CGFloat) {
+        let hover = TokenChartHoverModel.hover(
+            at: location,
+            contentMinX: contentMinX,
+            contentWidth: contentWidth,
+            bucketCount: chart.buckets.count,
+            mode: chartMode
+        )
+        guard chartHover != hover else { return }
+        chartHover = hover
+    }
+
+    private func tooltip(at index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(chart.buckets[index].id)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            ForEach(tooltipSeries) { item in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(item.color)
+                        .frame(width: 6, height: 6)
+                    Text(item.tooltipName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(formattedTokenNumber(valueAt(index, in: item)).compact)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                }
+            }
+        }
+        .padding(8)
+        .frame(width: TokenChartLayout.tooltipWidth)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func valueAt(_ index: Int, in series: TokenChartSeries) -> Double {
+        guard series.values.indices.contains(index) else { return 0 }
+        return max(series.values[index], 0)
     }
 
     private func resolvedChartWidth(for visibleWidth: CGFloat) -> CGFloat {
@@ -179,6 +301,14 @@ struct TokenUsageChartView: View {
         let hue = Double((index - palette.count) % 24) / 24.0
         let brightness = 0.62 + Double((index / 24) % 3) * 0.12
         return Color(hue: hue, saturation: 0.72, brightness: min(brightness, 0.86))
+    }
+}
+
+private struct TokenChartContentMinXPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -230,6 +360,15 @@ enum TokenBarChartModel {
                 return total + max(item.values[index], 0)
             }
         }.max() ?? 0
+    }
+
+    static func tooltipSeries(
+        all: [TokenChartSeries],
+        selectedSeriesName: String?
+    ) -> [TokenChartSeries] {
+        let nonEmpty = all.filter { $0.values.contains(where: { $0 > 0 }) }
+        guard let selectedSeriesName else { return nonEmpty }
+        return nonEmpty.filter { $0.name == selectedSeriesName }
     }
 }
 

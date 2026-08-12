@@ -139,6 +139,8 @@ struct AppLocalization {
         case (.expandTokenStats, .zhHans): return "展开 token 统计"
         case (.totalTokenUsage, .en): return "Total tokens"
         case (.totalTokenUsage, .zhHans): return "Token 总量"
+        case (.chartTooltipTotal, .en): return "Total"
+        case (.chartTooltipTotal, .zhHans): return "总量"
         case (.showAllLines, .en): return "Show all statistics"
         case (.showAllLines, .zhHans): return "显示全部统计项"
         case (.showOnlyTotalUsage, .en): return "Show only total tokens"
@@ -208,6 +210,7 @@ struct AppLocalization {
         case collapseTokenStats
         case expandTokenStats
         case totalTokenUsage
+        case chartTooltipTotal
         case showAllLines
         case showOnlyTotalUsage
         case noStatsData
