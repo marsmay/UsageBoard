@@ -9,11 +9,6 @@ struct TokenLineChartPlot: View {
     var hoverIndex: Int?
     var onHover: (TokenChartHover?) -> Void
 
-    private let leadingWidth = TokenChartLayout.leadingAxisWidth
-    private let trailingPadding: CGFloat = 20
-    private let topPadding: CGFloat = 12
-    private let bottomHeight: CGFloat = 26
-
     private var axisScale: TokenChartAxisScale {
         TokenChartAxisScale(dataMaximum: maxValue)
     }
@@ -23,17 +18,23 @@ struct TokenLineChartPlot: View {
             let size = proxy.size
             let chartFrame = proxy.frame(in: .named("TokenChartViewport"))
             let plotRect = CGRect(
-                x: leadingWidth,
-                y: topPadding,
-                width: max(size.width - leadingWidth - trailingPadding, 1),
-                height: max(size.height - topPadding - bottomHeight, 1)
+                x: TokenChartLayout.leadingAxisWidth,
+                y: TokenChartLayout.topPadding,
+                width: max(
+                    size.width - TokenChartLayout.leadingAxisWidth - TokenChartLayout.trailingPadding,
+                    1
+                ),
+                height: max(
+                    size.height - TokenChartLayout.topPadding - TokenChartLayout.bottomHeight,
+                    1
+                )
             )
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(nsColor: .textBackgroundColor).opacity(0.55))
 
-                grid(in: plotRect)
+                gridLines(in: plotRect)
                 xAxisLabels(in: plotRect)
                 lineSeries(in: plotRect)
 
@@ -59,26 +60,15 @@ struct TokenLineChartPlot: View {
         }
     }
 
-    private func grid(in plotRect: CGRect) -> some View {
+    private func gridLines(in plotRect: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
             ForEach(0...axisScale.tickCount, id: \.self) { index in
-                let value = axisScale.step * Double(axisScale.tickCount - index)
                 let y = plotRect.minY + CGFloat(index) / CGFloat(axisScale.tickCount) * plotRect.height
                 Path { path in
                     path.move(to: CGPoint(x: plotRect.minX, y: y))
                     path.addLine(to: CGPoint(x: plotRect.maxX, y: y))
                 }
                 .stroke(Color(nsColor: .separatorColor).opacity(0.65), lineWidth: 0.6)
-
-                Text(formattedAxisTokenNumber(value))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .allowsTightening(true)
-                    .frame(width: leadingWidth - 8, alignment: .trailing)
-                    .position(x: (leadingWidth - 8) / 2, y: y)
             }
         }
     }
@@ -91,7 +81,7 @@ struct TokenLineChartPlot: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .position(x: x, y: plotRect.maxY + 15)
+                    .position(x: x, y: TokenChartLayout.xAxisLabelCenterY)
             }
         }
     }
@@ -182,6 +172,9 @@ enum TokenChartLayout {
     static let topPadding: CGFloat = 12
     static let bottomHeight: CGFloat = 26
     static let height: CGFloat = 170
+    static let plotHeight: CGFloat = height - topPadding - bottomHeight
+    static let plotBottomY: CGFloat = topPadding + plotHeight
+    static let xAxisLabelCenterY: CGFloat = plotBottomY + 15
     static let tooltipWidth: CGFloat = 178
     static let tooltipMargin: CGFloat = 8
     static let tooltipGap: CGFloat = 12
@@ -205,6 +198,51 @@ enum TokenChartLayout {
     }
 }
 
+struct TokenChartYAxis: View {
+    var maxValue: Double
+    var viewportWidth: CGFloat
+
+    private var axisScale: TokenChartAxisScale {
+        TokenChartAxisScale(dataMaximum: maxValue)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color(nsColor: .textBackgroundColor))
+                .frame(
+                    width: TokenChartLayout.leadingAxisWidth,
+                    height: TokenChartLayout.plotBottomY
+                )
+
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.35))
+                .frame(width: 0.5, height: TokenChartLayout.plotHeight)
+                .offset(
+                    x: TokenChartLayout.leadingAxisWidth - 0.5,
+                    y: TokenChartLayout.topPadding
+                )
+
+            ForEach(0...axisScale.tickCount, id: \.self) { index in
+                let value = axisScale.step * Double(axisScale.tickCount - index)
+                let y = TokenChartLayout.topPadding
+                    + CGFloat(index) / CGFloat(axisScale.tickCount) * TokenChartLayout.plotHeight
+                Text(formattedAxisTokenNumber(value))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .allowsTightening(true)
+                    .frame(width: TokenChartLayout.leadingAxisWidth - 8, alignment: .trailing)
+                    .position(x: (TokenChartLayout.leadingAxisWidth - 8) / 2, y: y)
+            }
+        }
+        .frame(width: viewportWidth, height: TokenChartLayout.height, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
 enum TokenChartHoverModel {
     static func hover(
         at location: CGPoint,
@@ -215,6 +253,7 @@ enum TokenChartHoverModel {
     ) -> TokenChartHover? {
         guard bucketCount > 0 else { return nil }
         guard plotRect.contains(location) else { return nil }
+        guard chartMinX + location.x >= TokenChartLayout.leadingAxisWidth else { return nil }
 
         let index: Int
         switch mode {

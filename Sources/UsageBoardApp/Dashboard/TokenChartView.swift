@@ -7,6 +7,7 @@ struct TokenUsageChartView: View {
     var chartMode: ChartMode
     @State private var selectedSeries: String?
     @State private var chartHover: TokenChartHover?
+    @State private var chartContentMinX: CGFloat?
     private var strings: AppLocalization {
         .shared
     }
@@ -146,6 +147,30 @@ struct TokenUsageChartView: View {
                                 .frame(width: resolvedWidth, height: TokenChartLayout.height)
                             }
                         }
+                        .background(
+                            GeometryReader { content in
+                                Color.clear.preference(
+                                    key: TokenChartContentMinXPreferenceKey.self,
+                                    value: content.frame(in: .named("TokenChartViewport")).minX
+                                )
+                            }
+                        )
+                    }
+                    .onPreferenceChange(TokenChartContentMinXPreferenceKey.self) { minX in
+                        if TokenChartScrollModel.didScroll(
+                            from: chartContentMinX,
+                            to: minX
+                        ) {
+                            chartHover = nil
+                        }
+                        chartContentMinX = minX
+                    }
+                    .overlay(alignment: .topLeading) {
+                        TokenChartYAxis(
+                            maxValue: chartMaximum,
+                            viewportWidth: viewport.size.width
+                        )
+                        .allowsHitTesting(false)
                     }
                     .overlay(alignment: .bottomLeading) {
                         tooltip(at: resolvedHover?.index ?? chart.buckets.startIndex)
@@ -237,6 +262,15 @@ struct TokenUsageChartView: View {
         series[0]
     }
 
+    private var chartMaximum: Double {
+        switch chartMode {
+        case .line:
+            return max(visibleSeries.flatMap(\.values).max() ?? 0, 1)
+        case .bar:
+            return max(TokenBarChartModel.maximum(for: visibleBarSeries), 1)
+        }
+    }
+
     private func resolvedChartWidth(for visibleWidth: CGFloat) -> CGFloat {
         if chartMode == .bar {
             let step: CGFloat = chart.bucketUnit == "day" ? 14 : 30
@@ -283,6 +317,21 @@ enum TokenChartTooltipModel {
             item.values.indices.contains(index) && item.values[index] > 0
         }
         return nonZero.isEmpty ? [fallback] : nonZero
+    }
+}
+
+enum TokenChartScrollModel {
+    static func didScroll(from previousMinX: CGFloat?, to minX: CGFloat) -> Bool {
+        guard let previousMinX else { return false }
+        return abs(previousMinX - minX) > 0.5
+    }
+}
+
+private struct TokenChartContentMinXPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

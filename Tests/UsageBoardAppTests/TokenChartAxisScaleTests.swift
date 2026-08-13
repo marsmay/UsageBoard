@@ -61,6 +61,22 @@ final class TokenChartAxisScaleTests: XCTestCase {
         XCTAssertEqual(TokenChartLayout.tooltipOffsetY, -8)
     }
 
+    func testFixedAxisUsesTheSamePlotHeightAsScrollableCharts() {
+        XCTAssertEqual(TokenChartLayout.plotHeight, 132)
+    }
+
+    func testFixedAxisMaskStopsBeforeXAxisLabels() {
+        XCTAssertEqual(TokenChartLayout.plotBottomY, 144)
+        XCTAssertEqual(TokenChartLayout.xAxisLabelCenterY, 159)
+        XCTAssertLessThan(TokenChartLayout.plotBottomY, TokenChartLayout.xAxisLabelCenterY)
+    }
+
+    func testScrollChangeClearsHoverOnlyAfterContentActuallyMoves() {
+        XCTAssertFalse(TokenChartScrollModel.didScroll(from: nil, to: 0))
+        XCTAssertFalse(TokenChartScrollModel.didScroll(from: 0, to: -0.5))
+        XCTAssertTrue(TokenChartScrollModel.didScroll(from: 0, to: -0.6))
+    }
+
     func testLineHoverUsesPlotLocalLocationAfterHorizontalScroll() throws {
         let plotRect = CGRect(x: 40, y: 12, width: 340, height: 132)
         let hover = try XCTUnwrap(TokenChartHoverModel.hover(
@@ -102,6 +118,13 @@ final class TokenChartAxisScaleTests: XCTestCase {
             at: CGPoint(x: 100, y: 160),
             in: CGRect(x: 40, y: 12, width: 340, height: 132),
             chartMinX: 0,
+            bucketCount: 5,
+            mode: .line
+        ))
+        XCTAssertNil(TokenChartHoverModel.hover(
+            at: CGPoint(x: 130, y: 80),
+            in: CGRect(x: 40, y: 12, width: 340, height: 132),
+            chartMinX: -100,
             bucketCount: 5,
             mode: .line
         ))
