@@ -396,8 +396,21 @@ def parse_sessions_for_chart(
     model_totals: dict[str, float] = {}
 
     for filepath in files:
+        # token_count events may be written before the matching turn_context in
+        # newer Codex logs (the first turn_context can appear hundreds of lines
+        # in), so entries seen before any model is declared are buffered and
+        # backfilled with the file's first declared model once known.
+        first_model: str | None = None
         current_model: str | None = None
-        prev_usage: dict[str, float] = {}
+        prev_total: float = 0.0
+        pending: list[tuple[str, float]] = []
+
+        def apply_entry(key: str, delta: float) -> None:
+            model = current_model or "unknown"
+            if key in bucket_keys:
+                bucket_keys[key][model] = bucket_keys[key].get(model, 0) + delta
+                model_totals[model] = model_totals.get(model, 0) + delta
+
         try:
             with open(filepath, encoding="utf-8") as fh:
                 for line in fh:
@@ -416,7 +429,10 @@ def parse_sessions_for_chart(
                     if kind == "turn_context":
                         model = payload.get("model")
                         if isinstance(model, str) and model.strip():
-                            current_model = model.strip()
+                            model = model.strip()
+                            if first_model is None:
+                                first_model = model
+                            current_model = model
 
                     if payload.get("type") == "token_count":
                         info = payload.get("info")
@@ -430,24 +446,34 @@ def parse_sessions_for_chart(
                             continue
                         total_tokens = float(total_tokens)
 
-                        delta = max(total_tokens - prev_usage.get("total_tokens", 0), 0)
-                        if not prev_usage:
+                        delta = max(total_tokens - prev_total, 0)
+                        if prev_total == 0.0:
                             delta = total_tokens
-                        prev_usage["total_tokens"] = total_tokens
+                        prev_total = total_tokens
 
-                        model = current_model or "unknown"
                         ts = payload.get("timestamp") or event.get("timestamp")
-                        if ts and delta > 0:
-                            try:
-                                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone()
-                            except (ValueError, TypeError):
-                                continue
-                            key = bucket_id(dt, bucket_unit)
-                            if key in bucket_keys:
-                                bucket_keys[key][model] = bucket_keys[key].get(model, 0) + delta
-                                model_totals[model] = model_totals.get(model, 0) + delta
+                        if not (ts and delta > 0):
+                            continue
+                        try:
+                            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone()
+                        except (ValueError, TypeError):
+                            continue
+                        key = bucket_id(dt, bucket_unit)
+                        if current_model is None:
+                            pending.append((key, delta))
+                        else:
+                            apply_entry(key, delta)
         except (OSError, UnicodeDecodeError):
             continue
+
+        if pending:
+            # pending entries were all seen before the first turn_context, so
+            # they belong to the file's first declared model.
+            fallback_model = first_model or "unknown"
+            for key, delta in pending:
+                if key in bucket_keys:
+                    bucket_keys[key][fallback_model] = bucket_keys[key].get(fallback_model, 0) + delta
+                    model_totals[fallback_model] = model_totals.get(fallback_model, 0) + delta
 
     sorted_models = [m for m, _ in sorted(model_totals.items(), key=lambda x: -x[1])]
 
