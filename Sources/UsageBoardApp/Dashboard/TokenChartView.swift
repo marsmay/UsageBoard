@@ -220,7 +220,8 @@ struct TokenUsageChartView: View {
         let rows = TokenChartTooltipModel.series(
             at: index,
             from: tooltipSeries,
-            fallback: totalSeries
+            total: totalSeries,
+            selectedName: selectedSeries
         )
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -311,12 +312,23 @@ enum TokenChartTooltipModel {
     static func series(
         at index: Int,
         from series: [TokenChartSeries],
-        fallback: TokenChartSeries
+        total: TokenChartSeries,
+        selectedName: String?
     ) -> [TokenChartSeries] {
+        // 选中数据项时只显示该项，哪怕当前桶为 0
+        if let selectedName,
+           let selected = series.first(where: { $0.name == selectedName }) {
+            return [selected]
+        }
+
+        // 未选中时总量始终显示，其余项仅在该桶非零时显示
         let nonZero = series.filter { item in
             item.values.indices.contains(index) && item.values[index] > 0
         }
-        return nonZero.isEmpty ? [fallback] : nonZero
+        if nonZero.contains(where: { $0.id == total.id }) {
+            return nonZero
+        }
+        return [total] + nonZero
     }
 }
 

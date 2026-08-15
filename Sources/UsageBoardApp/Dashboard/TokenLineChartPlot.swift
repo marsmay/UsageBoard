@@ -123,6 +123,9 @@ struct TokenLineChartPlot: View {
 
     private func hoverIndicator(index: Int, in plotRect: CGRect) -> some View {
         let x = xPosition(for: index, in: plotRect)
+        // 未选中时首条可见线即总量线；选中时只剩目标线，圆点跟随其数值与颜色
+        let markerValue = series.first.map { valueAt(index, in: $0) } ?? buckets[index].total
+        let markerColor = series.first?.color ?? .blue
 
         return ZStack(alignment: .topLeading) {
             Path { path in
@@ -133,9 +136,9 @@ struct TokenLineChartPlot: View {
 
             Circle()
                 .strokeBorder(.white, lineWidth: 2)
-                .background(Circle().fill(.blue))
+                .background(Circle().fill(markerColor))
                 .frame(width: 8, height: 8)
-                .position(x: x, y: yPosition(for: buckets[index].total, in: plotRect))
+                .position(x: x, y: yPosition(for: markerValue, in: plotRect))
         }
     }
 

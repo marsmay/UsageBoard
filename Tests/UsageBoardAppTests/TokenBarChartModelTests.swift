@@ -121,7 +121,8 @@ final class TokenBarChartModelTests: XCTestCase {
         let visible = TokenChartTooltipModel.series(
             at: 0,
             from: series,
-            fallback: series[0]
+            total: series[0],
+            selectedName: nil
         )
 
         XCTAssertEqual(visible.map(\.name), ["total", "second"])
@@ -137,9 +138,10 @@ final class TokenBarChartModelTests: XCTestCase {
             TokenChartTooltipModel.series(
                 at: 1,
                 from: series,
-                fallback: makeSeries("total", [10, 8])
+                total: makeSeries("total", [10, 8]),
+                selectedName: nil
             ).map(\.name),
-            ["first"]
+            ["total", "first"]
         )
     }
 
@@ -153,11 +155,44 @@ final class TokenBarChartModelTests: XCTestCase {
         let visible = TokenChartTooltipModel.series(
             at: 0,
             from: series,
-            fallback: total
+            total: total,
+            selectedName: nil
         )
 
         XCTAssertEqual(visible.map(\.name), ["total"])
         XCTAssertEqual(visible.first?.values, [0])
+    }
+
+    func testUnselectedTooltipAlwaysIncludesTotalEvenWhenZero() {
+        let series = [
+            makeSeries("total", [0, 20]),
+            makeSeries("first", [3, 8]),
+        ]
+
+        let visible = TokenChartTooltipModel.series(
+            at: 0,
+            from: series,
+            total: series[0],
+            selectedName: nil
+        )
+
+        XCTAssertEqual(visible.map(\.name), ["total", "first"])
+    }
+
+    func testSelectedTooltipShowsSelectedSeriesEvenWhenZero() {
+        let series = [
+            makeSeries("first", [0, 8]),
+        ]
+
+        let visible = TokenChartTooltipModel.series(
+            at: 0,
+            from: series,
+            total: makeSeries("total", [10, 8]),
+            selectedName: "first"
+        )
+
+        XCTAssertEqual(visible.map(\.name), ["first"])
+        XCTAssertEqual(visible.first?.values, [0, 8])
     }
 
     private func makeSeries(_ name: String, _ values: [Double]) -> TokenChartSeries {
