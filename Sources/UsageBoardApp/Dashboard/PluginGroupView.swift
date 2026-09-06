@@ -75,6 +75,7 @@ struct PluginGroupView: View {
                         }
                         .buttonStyle(.plain)
                         .help(isChartExpanded ? strings.text(.collapseTokenStats) : strings.text(.expandTokenStats))
+                        .accessibilityLabel(isChartExpanded ? strings.text(.collapseTokenStats) : strings.text(.expandTokenStats))
 
                         if isChartExpanded {
                             TokenUsageChartView(chart: chart, language: language, chartMode: chartMode)
@@ -141,6 +142,8 @@ struct PluginGroupView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
+            .help(strings.text(.refresh))
+            .accessibilityLabel("\(strings.text(.refresh)) \(snapshot.displayName)")
         }
     }
 

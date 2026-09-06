@@ -129,7 +129,7 @@ public struct UsageItem: Codable, Equatable, Identifiable, Sendable {
     }
 
     public var progress: Double {
-        guard limit > 0 else { return 0 }
+        guard used.isFinite, limit.isFinite, limit > 0 else { return 0 }
         return min(max(used / limit, 0), 1)
     }
 
@@ -157,8 +157,9 @@ public struct UsageItem: Codable, Equatable, Identifiable, Sendable {
     }
 
     private static func formatNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "--" }
         if value.rounded() == value {
-            return String(Int(value))
+            return String(format: "%.0f", value)
         }
         return String(format: "%.2f", value)
     }

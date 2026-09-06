@@ -69,14 +69,28 @@ struct AppLocalization {
 
     func text(_ key: Key) -> String {
         switch (key, language) {
+        case (.discardChanges, .en): return "Discard Changes"
+        case (.discardChanges, .zhHans): return "放弃更改"
+        case (.unsavedChanges, .en): return "Save changes before switching plugins?"
+        case (.unsavedChanges, .zhHans): return "切换插件前保存更改？"
+        case (.noSearchResults, .en): return "No matching plugins"
+        case (.noSearchResults, .zhHans): return "未找到匹配插件"
+        case (.reloadMetadata, .en): return "Reload metadata"
+        case (.reloadMetadata, .zhHans): return "重新加载元数据"
+        case (.chooseScript, .en): return "Choose script"
+        case (.chooseScript, .zhHans): return "选择脚本"
+        case (.removePlugin, .en): return "Remove plugin"
+        case (.removePlugin, .zhHans): return "移除插件"
+        case (.addPlugin, .en): return "Add plugin"
+        case (.addPlugin, .zhHans): return "添加插件"
         case (.launchAtLogin, .en): return "Launch at Login"
         case (.launchAtLogin, .zhHans): return "开机启动"
         case (.launchAtLoginHint, .en): return "Launch UsageBoard at login"
         case (.launchAtLoginHint, .zhHans): return "登录时自动启动 UsageBoard"
         case (.displayMode, .en): return "Display Mode"
         case (.displayMode, .zhHans): return "显示模式"
-        case (.displayModeHint, .en): return "Group by service or merge to a list"
-        case (.displayModeHint, .zhHans): return "按服务分组或合并为列表"
+        case (.displayModeHint, .en): return "Show services in groups or tabs"
+        case (.displayModeHint, .zhHans): return "按服务分组或通过标签页切换"
         case (.chartMode, .en): return "Chart Mode"
         case (.chartMode, .zhHans): return "图表模式"
         case (.chartModeHint, .en): return "Show statistics as lines or stacked bars"
@@ -97,7 +111,7 @@ struct AppLocalization {
         case (.version, .zhHans): return "版本"
         case (.unknownVersion, .en): return "Unknown"
         case (.unknownVersion, .zhHans): return "未知"
-        case (.checkingUpdate, .en): return "Updating..."
+        case (.checkingUpdate, .en): return "Checking..."
         case (.checkingUpdate, .zhHans): return "检查中..."
         case (.checkForUpdates, .en): return "Check for Updates"
         case (.checkForUpdates, .zhHans): return "检查更新"
@@ -175,6 +189,13 @@ struct AppLocalization {
     }
 
     enum Key {
+        case discardChanges
+        case unsavedChanges
+        case noSearchResults
+        case reloadMetadata
+        case chooseScript
+        case removePlugin
+        case addPlugin
         case launchAtLogin
         case launchAtLoginHint
         case displayMode

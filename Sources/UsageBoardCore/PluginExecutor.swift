@@ -3,12 +3,24 @@ import Darwin
 
 private final class DataBuffer: @unchecked Sendable {
     private var data = Data()
+    private let limit: Int
+    private var exceeded = false
     private let lock = NSLock()
+
+    init(limit: Int) { self.limit = limit }
 
     func append(_ chunk: Data) {
         lock.lock()
-        data.append(chunk)
+        let remaining = limit - data.count
+        if chunk.count > remaining { exceeded = true }
+        data.append(chunk.prefix(remaining))
         lock.unlock()
+    }
+
+    var exceededLimit: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return exceeded
     }
 
     func snapshot() -> Data {
@@ -50,8 +62,8 @@ public struct PluginExecutor: Sendable {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        let outputBuffer = DataBuffer()
-        let errorBuffer = DataBuffer()
+        let outputBuffer = DataBuffer(limit: 8 * 1024 * 1024)
+        let errorBuffer = DataBuffer(limit: 64 * 1024)
         let outputDrained = DispatchSemaphore(value: 0)
         let errorDrained = DispatchSemaphore(value: 0)
 
@@ -85,7 +97,15 @@ public struct PluginExecutor: Sendable {
             return failed(configuration: configuration, displayName: displayName, message: error.localizedDescription)
         }
 
-        let finished = exitSemaphore.wait(timeout: .now() + timeoutSeconds) == .success
+        let deadline = DispatchTime.now() + timeoutSeconds
+        var finished = false
+        while !Task.isCancelled && !outputBuffer.exceededLimit {
+            if exitSemaphore.wait(timeout: min(.now() + 0.05, deadline)) == .success {
+                finished = true
+                break
+            }
+            if DispatchTime.now() >= deadline { break }
+        }
         if !finished {
             process.terminate()
             if exitSemaphore.wait(timeout: .now() + 1.0) != .success {
@@ -100,6 +120,9 @@ public struct PluginExecutor: Sendable {
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
 
+        if outputBuffer.exceededLimit {
+            return failed(configuration: configuration, displayName: displayName, message: text(.outputTooLarge, language: language))
+        }
         if !finished {
             return failed(configuration: configuration, displayName: displayName, message: text(.timeout, language: language))
         }
@@ -112,6 +135,10 @@ public struct PluginExecutor: Sendable {
         }
 
         do {
+            if let errorOutput = try? UsageBoardJSON.decoder().decode(PluginOutputError.self, from: outputData),
+               !errorOutput.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return failed(configuration: configuration, displayName: displayName, message: errorOutput.error)
+            }
             let pluginOutput = try UsageBoardJSON.decoder().decode(PluginOutput.self, from: outputData)
             return PluginSnapshot(
                 id: configuration.id,
@@ -125,10 +152,6 @@ public struct PluginExecutor: Sendable {
                 chart: pluginOutput.chart
             )
         } catch {
-            if let errorOutput = try? UsageBoardJSON.decoder().decode(PluginOutputError.self, from: outputData),
-               !errorOutput.error.isEmpty {
-                return failed(configuration: configuration, displayName: displayName, message: errorOutput.error)
-            }
             return failed(configuration: configuration, displayName: displayName, message: "\(text(.jsonParseFailed, language: language))\(decodeErrorDescription(error))")
         }
     }
@@ -148,6 +171,7 @@ public struct PluginExecutor: Sendable {
     private func pluginEnvironment() -> [String: String] {
         ProcessInfo.processInfo.environment.merging([
             "PYTHONIOENCODING": "utf-8",
+            "PYTHONDONTWRITEBYTECODE": "1",
             "LANG": "en_US.UTF-8",
             "LC_ALL": "en_US.UTF-8",
         ]) { _, new in new }
@@ -193,12 +217,15 @@ public struct PluginExecutor: Sendable {
     private enum Message {
         case missingExecutablePath
         case timeout
+        case outputTooLarge
         case exitCode(Int32)
         case jsonParseFailed
     }
 
     private func text(_ message: Message, language: AppLanguage) -> String {
         switch (message, language) {
+        case (.outputTooLarge, .en): return "Plugin output exceeds the 8 MiB limit"
+        case (.outputTooLarge, .zhHans): return "插件输出超过 8 MiB 上限"
         case (.missingExecutablePath, .en):
             return "Executable path is not configured"
         case (.missingExecutablePath, .zhHans):

@@ -12,7 +12,7 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 - 系统休眠时暂停定时刷新，唤醒后继续调度。
 - 插件化用量查询，插件可独立配置刷新间隔和参数。
 - 插件图标支持，从元数据配置加载远程图片并缓存。
-- 订阅级别徽章显示（黑底白字圆角标签）。
+- 订阅级别徽章显示（按套餐或插件配置着色）。
 - 插件设置界面从脚本元数据自动生成参数表单，支持分段选择控件和目录选择器。
 - 新增插件默认不启用，启用前会检查必填参数。
 - 插件数据按 `stateID` 缓存到磁盘，启动后可展示上次成功数据。
@@ -75,11 +75,11 @@ UsageBoard 默认使用：
 
 目录内容：
 
-- `config.json`：主配置文件。
+- `config.json`：主配置文件，包含插件参数，以仅当前用户可读写的权限（0600）保存。
 - `plugins/`：用户插件目录。添加插件时文件选择器默认打开这里。
 - `states/`：插件数据缓存目录。
 
-当前实现会在启动时向 `plugins/` 目录创建内置插件的同名符号链接（以 `_` 开头的内部模块文件除外），来源是 app 包内的 `Contents/Resources/Plugins/`，开发运行时则 fallback 到项目的 `Resources/BundledPlugins/`。
+当前实现会在启动时向 `plugins/` 目录创建内置插件的同名符号链接（以 `_` 开头的内部模块文件除外），来源是 app 包内的 `Contents/Resources/Plugins/`，开发运行时则 fallback 到项目的 `Resources/BundledPlugins/`。现有同名普通文件会保留，已有符号链接会随 app 位置更新；如需自定义内置插件，可将其链接替换为独立脚本文件。
 
 ## 配置文件
 
@@ -158,7 +158,7 @@ UsageBoard 默认使用：
 /usr/bin/env python3 /path/to/plugin.py --usageboard-param KEY=value --usageboard-param USAGEBOARD_LANGUAGE=zh-Hans
 ```
 
-插件必须向 stdout 输出 UsageBoard 可解析的 JSON。stderr 可用于调试；退出码非 0、超时或 stdout 非法 JSON 都会显示为插件错误。插件也可以向 stdout 输出 `{"error": "错误信息"}` 表示失败，UsageBoard 会把该错误展示在插件卡片内容区。
+插件必须向 stdout 输出 UsageBoard 可解析的 JSON。stdout 上限为 8 MiB，stderr 最多保留 64 KiB；超时、取消或输出超限会终止插件进程。Python 执行禁用字节码缓存，避免修改 app 包。stderr 可用于调试；退出码非 0、超时或 stdout 非法 JSON 都会显示为插件错误。插件也可以向 stdout 输出 `{"error": "错误信息"}` 表示失败，UsageBoard 会把该错误展示在插件卡片内容区。
 
 更完整的说明见 [插件编写说明](Resources/PluginAuthoringGuide.html)。
 
@@ -218,14 +218,15 @@ UsageBoard 默认使用：
 
 `choice` 参数在设置页显示为分段控件；`directory` 参数显示为路径输入框和文件夹选择器；`file` 参数显示为路径输入框和文件选择器。
 
-插件读取参数示例：
+内置插件读取参数示例（独立用户插件需在脚本同目录提供 `_common.py`，或参考插件编写说明中的独立实现）：
 
 ```python
-from _common import parse_usageboard_params, get_app_language, make_translator, success, failure
+import sys
+from _common import parse_usageboard_params, app_language, make_translator, success, failure
 
 def main():
     params = parse_usageboard_params(sys.argv[1:])
-    language = get_app_language(sys.argv[1:])
+    language = app_language(params)
     translate = make_translator({
         "my_plugin_name": {"zh-Hans": "我的插件", "en": "My Plugin"},
     })
@@ -234,14 +235,14 @@ def main():
     if not api_key:
         return failure(translate(language, "missing_api_key"))
 
-    # ... 调用 API ...
+    items = []  # 在此调用 API 并构造实际用量项目
     return success(items)
 
 if __name__ == "__main__":
     sys.exit(main())
 ```
 
-`_common.py` 提供了参数解析（`parse_usageboard_params`）、语言检测（`get_app_language`）、翻译工厂（`make_translator`）、输出函数（`success`/`failure`）、颜色/状态计算（`color_for`/`status_for`/`numeric`）以及统一的 HTTP 错误处理（`handle_http_error`/`handle_url_error`）。新插件应直接引用这些工具，不要重复实现。完整的公共函数列表见 `_common.py` 源码。
+`_common.py` 提供了参数解析（`parse_usageboard_params`）、语言检测（`app_language`）、翻译工厂（`make_translator`）、输出函数（`success`/`failure`）、颜色/状态计算（`color_for`/`status_for`/`numeric`）以及统一的 HTTP 错误处理（`handle_http_error`/`handle_url_error`）。新插件应直接引用这些工具，不要重复实现。完整的公共函数列表见 `_common.py` 源码。
 
 UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans` 或 `--usageboard-param USAGEBOARD_LANGUAGE=en`。脚本应读取这个保留参数，并直接返回对应语言的展示文本。
 
@@ -309,7 +310,7 @@ UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOA
 - `chart.message`：可选提示文案，统计数据为空或不可用时显示。
 - `error`：可选顶层错误信息；存在且非空时，该插件本次运行会被视为失败，错误文本显示在卡片内容区。
 
-内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过 `DATA_DIR` 参数指定数据目录（默认 `~/.codex`），从中读取 `auth.json` 获取认证令牌，并解析会话文件生成 token 统计。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中，且每次运行都会重新扫描当天数据。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
+内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过 `DATA_DIR` 参数指定数据目录（默认 `~/.codex`），从中读取 `auth.json` 获取认证令牌，并解析会话文件生成 token 统计。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中；每次运行重扫最后一个已缓存日及之后的数据。Claude、Codex 与智谱共享原子缓存读写，写入失败时保留之前的完整缓存。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
 
 ## 安装
 

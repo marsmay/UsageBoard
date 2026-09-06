@@ -358,7 +358,7 @@ func formattedTokenNumber(_ value: Double) -> (number: String, unit: String, com
         return (number, "K", "\(number)K")
     }
     if value.rounded() == value {
-        let number = String(Int(value))
+        let number = String(format: "%.0f", value)
         return (number, "", number)
     }
     let number = String(format: "%.2f", value)
@@ -375,12 +375,12 @@ func formattedAxisTokenNumber(_ value: Double) -> String {
     if value >= 1_000 {
         return "\(formattedAxisNumber(value / 1_000))K"
     }
-    return "\(Int(value.rounded()))"
+    return String(format: "%.0f", value)
 }
 
 private func formattedAxisNumber(_ value: Double) -> String {
     if abs(value.rounded() - value) < 0.000_001 {
-        return String(Int(value.rounded()))
+        return String(format: "%.0f", value)
     }
     return String(format: "%.1f", value)
 }

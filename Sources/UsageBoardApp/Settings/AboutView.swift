@@ -35,19 +35,19 @@ struct AboutView: View {
                     Text(currentVersion)
                         .font(.system(size: 12.5))
                         .monospacedDigit()
-                    Button(store.isUpdating ? strings.text(.checkingUpdate) : strings.text(.checkForUpdates)) {
+                    Button(store.isCheckingForUpdates ? strings.text(.checkingUpdate) : strings.text(.checkForUpdates)) {
                         isUserChecking = true
                         store.checkForUpdates()
                     }
                     .controlSize(.regular)
-                    .disabled(store.isUpdating)
-                    if store.isUpdating {
+                    .disabled(store.isCheckingForUpdates || store.isUpdating)
+                    if store.isCheckingForUpdates || store.isUpdating {
                         ProgressView()
                             .controlSize(.small)
                     } else if let updateMessage = store.updateMessage {
                         Text(updateMessage)
                             .font(.system(size: 11.5))
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                             .foregroundStyle(.tertiary)
                     }
                 }

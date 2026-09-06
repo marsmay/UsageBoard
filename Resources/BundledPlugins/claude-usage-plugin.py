@@ -72,6 +72,8 @@ from urllib import request as urllib_request
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from _common import (  # noqa: E402
+    load_json_cache,
+    save_json_cache,
     app_language as _app_language,
     color_for_pct,
     failure,
@@ -305,25 +307,12 @@ def _cache_path(data_dir):
     return os.path.join(os.path.expanduser(data_dir), CACHE_FILENAME)
 
 def load_stats_cache(data_dir):
-    path = _cache_path(data_dir)
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        if data.get("version") != CACHE_VERSION:
-            return None
-        return data
-    except Exception:
-        return None
+    return load_json_cache(_cache_path(data_dir), CACHE_VERSION)
+
 
 def save_stats_cache(data_dir, cache_data):
-    path = _cache_path(data_dir)
-    try:
-        with open(path, "w") as f:
-            json.dump(cache_data, f)
-    except Exception:
-        pass
+    save_json_cache(_cache_path(data_dir), cache_data)
+
 
 def _parse_date(s):
     return datetime.strptime(s, "%Y-%m-%d").date()

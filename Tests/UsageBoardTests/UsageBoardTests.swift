@@ -118,9 +118,8 @@ final class UsageBoardTests: XCTestCase {
         )
         .installIfNeeded()
 
-        XCTAssertEqual(installed.map(\.lastPathComponent), ["glm-usage-plugin.py", "tavily-usage-plugin.py"])
-        let linkTarget = try FileManager.default.destinationOfSymbolicLink(atPath: existing.path)
-        XCTAssertEqual(URL(fileURLWithPath: linkTarget).resolvingSymlinksInPath(), bundled.resolvingSymlinksInPath())
+        XCTAssertEqual(installed.map(\.lastPathComponent), ["tavily-usage-plugin.py"])
+        XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "user-edited")
         XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("tavily-usage-plugin.py")), "new")
     }
 

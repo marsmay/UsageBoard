@@ -64,8 +64,8 @@ swift build -c release
 echo "打包 app..."
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources/Plugins"
 cp .build/release/UsageBoard "$APP_BUNDLE/Contents/MacOS/UsageBoard"
-mkdir -p "$APP_BUNDLE/Contents/Resources/Plugins"
 rm -f "$APP_BUNDLE/Contents/Resources/Plugins/"*.py
+rm -rf "$APP_BUNDLE/Contents/Resources/Plugins/__pycache__"
 cp "$PROJECT_DIR/Resources/UsageBoard.icns" "$APP_BUNDLE/Contents/Resources/UsageBoard.icns"
 cp "$PROJECT_DIR/Resources/PluginAuthoringGuide.html" "$APP_BUNDLE/Contents/Resources/PluginAuthoringGuide.html"
 cp "$PROJECT_DIR/Resources/BundledPlugins/"*.py "$APP_BUNDLE/Contents/Resources/Plugins/"
@@ -87,7 +87,6 @@ echo "已生成: $DIST_DIR/$ZIP_NAME"
 
 # --- version.json ---
 UPDATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-ZIP_SIZE=$(stat -f%z "$DIST_DIR/$ZIP_NAME")
 DOWNLOAD_URL="${DOWNLOAD_BASE_URL}/${ZIP_NAME}"
 
 cat > "$DIST_DIR/version.json" << EOF

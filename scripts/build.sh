@@ -27,7 +27,7 @@ if [ ! -f "$PLIST" ]; then
 fi
 
 # --- Kill running instance ---
-pkill -f "UsageBoard.app" 2>/dev/null && echo "已关闭运行中的 UsageBoard" || true
+pkill -x "UsageBoard" 2>/dev/null && echo "已关闭运行中的 UsageBoard" || true
 
 # --- Build ---
 echo "构建 release..."
@@ -38,6 +38,7 @@ echo "打包 app..."
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources/Plugins"
 cp .build/release/UsageBoard "$APP_BUNDLE/Contents/MacOS/UsageBoard"
 rm -f "$APP_BUNDLE/Contents/Resources/Plugins/"*.py
+rm -rf "$APP_BUNDLE/Contents/Resources/Plugins/__pycache__"
 cp "$PROJECT_DIR/Resources/UsageBoard.icns" "$APP_BUNDLE/Contents/Resources/UsageBoard.icns"
 cp "$PROJECT_DIR/Resources/PluginAuthoringGuide.html" "$APP_BUNDLE/Contents/Resources/PluginAuthoringGuide.html"
 cp "$PROJECT_DIR/Resources/BundledPlugins/"*.py "$APP_BUNDLE/Contents/Resources/Plugins/"

@@ -1,4 +1,5 @@
 @preconcurrency import Foundation
+import Darwin
 
 public struct ConfigStore: Sendable {
     public var fileURL: URL
@@ -47,6 +48,15 @@ public struct ConfigStore: Sendable {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try UsageBoardJSON.encoder().encode(configuration)
-        try data.write(to: fileURL, options: [.atomic])
+        let temporaryURL = directory.appendingPathComponent(".config-\(UUID().uuidString).tmp")
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        guard FileManager.default.createFile(atPath: temporaryURL.path, contents: nil,
+                                            attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try data.write(to: temporaryURL)
+        guard rename(temporaryURL.path, fileURL.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 }

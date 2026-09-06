@@ -72,6 +72,8 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from _common import (  # noqa: E402
+    load_json_cache,
+    save_json_cache,
     app_language,
     color_for_pct,
     failure,
@@ -225,26 +227,11 @@ def _format_date(d) -> str:
 
 
 def load_chart_cache(data_dir: str) -> dict[str, Any] | None:
-    path = _cache_path(data_dir)
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if data.get("version") != CACHE_VERSION:
-            return None
-        return data
-    except (OSError, json.JSONDecodeError):
-        return None
+    return load_json_cache(_cache_path(data_dir), CACHE_VERSION)
 
 
 def save_chart_cache(data_dir: str, cache_data: dict[str, Any]) -> None:
-    path = _cache_path(data_dir)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(cache_data, f)
-    except OSError:
-        pass
+    save_json_cache(_cache_path(data_dir), cache_data)
 
 
 def maintain_chart_cache(data_dir: str, language: str) -> dict[str, dict[str, float]]:

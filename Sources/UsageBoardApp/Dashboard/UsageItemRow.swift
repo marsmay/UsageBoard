@@ -39,23 +39,38 @@ struct UsageProgressBar: View {
         GeometryReader { proxy in
             let ratio = max(0, min(value, 1))
             let width = ratio * proxy.size.width
-            let textWhite = ratio >= 0.55
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: UB.Radius.bar, style: .continuous)
                     .fill(resolvedColor.opacity(0.16))
                 RoundedRectangle(cornerRadius: UB.Radius.bar, style: .continuous)
                     .fill(resolvedColor)
                     .frame(width: width)
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(textWhite ? Color.white : Color.primary)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                valueLabel
+                    .foregroundStyle(Color.primary)
+                valueLabel
+                    .foregroundStyle(fillTextColor)
+                    .mask(alignment: .leading) {
+                        Rectangle().frame(width: width)
+                    }
             }
         }
         .frame(minWidth: 80, idealHeight: 18, maxHeight: 18)
         .clipShape(RoundedRectangle(cornerRadius: UB.Radius.bar, style: .continuous))
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
+    }
+
+    private var valueLabel: some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var fillTextColor: Color {
+        [Color.yellow, .orange, .green].contains(resolvedColor) ? .black : .white
     }
 
     private var resolvedColor: Color {

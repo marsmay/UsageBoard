@@ -11,6 +11,7 @@ final class UsageBoardStore: ObservableObject {
     @Published var updateMessage: String?
     @Published var availableUpdate: UpdateInfo?
     @Published var isUpdating: Bool = false
+    @Published private(set) var isCheckingForUpdates = false
     @Published var selectedTabID: UUID?
     @Published private(set) var nextRefreshAt: [UUID: Date] = [:]
 
@@ -56,9 +57,6 @@ final class UsageBoardStore: ObservableObject {
         configuration = loadedConfiguration
         activeLanguage = loadedConfiguration.language
         AppLocalization.shared = AppLocalization(language: activeLanguage)
-        if didLoadConfiguration {
-            try? configStore.save(configuration) // persist generated stateIDs
-        }
         do {
             try installBundledPlugins()
         } catch {
@@ -117,6 +115,14 @@ final class UsageBoardStore: ObservableObject {
         scheduleConfigurationWrite()
     }
 
+    func flushConfiguration() async {
+        while true {
+            let generation = configSaveGeneration
+            await configSaveTask?.value
+            if generation == configSaveGeneration { return }
+        }
+    }
+
     private func scheduleConfigurationWrite() {
         configSaveGeneration &+= 1
         let myGeneration = configSaveGeneration
@@ -164,6 +170,45 @@ final class UsageBoardStore: ObservableObject {
         saveConfiguration()
     }
 
+    @discardableResult
+    func updatePlugin(_ draft: PluginConfiguration) -> Bool {
+        guard let index = configuration.plugins.firstIndex(where: { $0.id == draft.id }) else { return false }
+        let original = configuration.plugins[index]
+        var updated = draft
+        updated.enabled = original.enabled
+        updated.stateID = original.stateID
+        updated.refreshIntervalSeconds = max(draft.refreshIntervalSeconds, 5)
+        var isDirectory: ObjCBool = false
+        guard !updated.executablePath.isEmpty,
+              FileManager.default.fileExists(atPath: updated.executablePath, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+            lastError = AppLocalization.shared.text(.scriptPathNotFound)
+            return false
+        }
+        if original.executablePath != updated.executablePath {
+            updated.metadata = PluginMetadataParser.parse(fileURL: URL(fileURLWithPath: updated.executablePath))
+            for parameter in updated.metadata?.parameters ?? [] where updated.parameterValues[parameter.name] == nil {
+                updated.parameterValues[parameter.name] = parameter.defaultValue ?? ""
+            }
+        }
+        let missing = missingRequiredParameters(for: updated)
+        guard !updated.enabled || missing.isEmpty else {
+            lastError = storeMessage(.missingRequiredParameters(missing))
+            return false
+        }
+        let executionChanged = original.executablePath != updated.executablePath
+            || original.parameterValues != updated.parameterValues
+            || original.metadata != updated.metadata
+        if executionChanged { updated.stateID = UUID().uuidString }
+        configuration.plugins[index] = updated
+        if executionChanged {
+            inflightRefreshTasks[updated.id]?.cancel()
+            snapshots[updated.id] = makeSnapshot(for: updated)
+        }
+        saveConfiguration()
+        return true
+    }
+
     func ensurePluginsDirectory() {
         do {
             try FileManager.default.createDirectory(at: pluginsDirectoryURL, withIntermediateDirectories: true)
@@ -179,7 +224,6 @@ final class UsageBoardStore: ObservableObject {
         guard enabled else {
             configuration.plugins[index].enabled = false
             inflightRefreshTasks[id]?.cancel()
-            inflightRefreshTasks.removeValue(forKey: id)
             nextRefreshAt.removeValue(forKey: id)
             rebuildSnapshots()
             startSchedulers()
@@ -255,18 +299,13 @@ final class UsageBoardStore: ObservableObject {
         guard isPluginReadyToRun(plugin) else {
             snapshots[plugin.id] = makeSnapshot(
                 for: plugin,
-                state: .loading,
-                items: snapshots[plugin.id]?.items ?? [],
-                updatedAt: snapshots[plugin.id]?.updatedAt,
-                chart: snapshots[plugin.id]?.chart
+                state: .failed(storeMessage(.missingRequiredParameters(missingRequiredParameters(for: plugin))))
             )
             return
         }
         let refreshInterval = max(plugin.refreshIntervalSeconds, 5)
+        if let task = inflightRefreshTasks[plugin.id], !task.isCancelled { return }
         if !force {
-            if inflightRefreshTasks[plugin.id] != nil {
-                return
-            }
             if let updatedAt = snapshots[plugin.id]?.updatedAt,
                Date().timeIntervalSince(updatedAt) <= Double(refreshInterval) {
                 return
@@ -289,21 +328,33 @@ final class UsageBoardStore: ObservableObject {
         let language = activeLanguage
         let pluginID = plugin.id
         nextRefreshAt[pluginID] = Date().addingTimeInterval(TimeInterval(refreshInterval))
-        inflightRefreshTasks[pluginID]?.cancel()
+        let previous = inflightRefreshTasks[pluginID]
         inflightRefreshTasks[pluginID] = Task { [weak self] in
-            let snapshot = await Task.detached(priority: .utility) {
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            let worker = Task.detached(priority: .utility) {
                 executor.run(configuration: plugin, displayName: displayName, language: language)
-            }.value
+            }
+            let snapshot = await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
             guard let self else { return }
             if Task.isCancelled { return }
             // Drop snapshot if the plugin was removed or disabled while in flight.
             guard let current = self.configuration.plugins.first(where: { $0.id == pluginID }),
-                  current.enabled else {
+                  current.enabled,
+                  current.executablePath == plugin.executablePath,
+                  current.parameterValues == plugin.parameterValues else {
                 self.inflightRefreshTasks.removeValue(forKey: pluginID)
                 return
             }
-            self.snapshots[pluginID] = snapshot
-            self.inflightRefreshTasks.removeValue(forKey: pluginID)
+            self.snapshots[pluginID] = self.makeSnapshot(
+                for: current, state: snapshot.state, items: snapshot.items,
+                updatedAt: snapshot.updatedAt, badge: snapshot.badge,
+                badgeColor: snapshot.badgeColor, chart: snapshot.chart
+            )
             if snapshot.state == .ready, let updatedAt = snapshot.updatedAt {
                 let cached = PluginCachedState(
                     updatedAt: updatedAt,
@@ -313,7 +364,7 @@ final class UsageBoardStore: ObservableObject {
                     chart: snapshot.chart
                 )
                 let stateID = current.stateID
-                Task.detached(priority: .utility) {
+                await Task.detached(priority: .utility) {
                     do {
                         try stateStore.save(stateID: stateID, state: cached)
                     } catch {
@@ -321,7 +372,10 @@ final class UsageBoardStore: ObservableObject {
                             self.lastError = self.storeMessage(.cacheSaveFailed(error.localizedDescription))
                         }
                     }
-                }
+                }.value
+            }
+            if !Task.isCancelled {
+                self.inflightRefreshTasks.removeValue(forKey: pluginID)
             }
         }
     }
@@ -332,13 +386,17 @@ final class UsageBoardStore: ObservableObject {
         return URL(string: string)
     }()
 
-    func checkForUpdates(userInitiated: Bool = false) {
+    func checkForUpdates() {
+        guard !isCheckingForUpdates, !isUpdating else { return }
         guard let url = Self.updateCheckURL else {
             updateMessage = storeMessage(.updateCheckURLMissing)
             return
         }
         availableUpdate = nil
+        isCheckingForUpdates = true
+        updateMessage = nil
         Task {
+            defer { isCheckingForUpdates = false }
             do {
                 let result = try await updateChecker.check(currentVersion: currentVersion, url: url)
                 if result.hasUpdate {
@@ -355,19 +413,19 @@ final class UsageBoardStore: ObservableObject {
     }
 
     func performUpdate() {
-        guard let info = availableUpdate, let url = URL(string: info.downloadURL) else { return }
+        guard !isUpdating, let info = availableUpdate, let url = URL(string: info.downloadURL) else { return }
         isUpdating = true
         updateMessage = storeMessage(.downloadingUpdate)
 
         Task {
             do {
                 let downloader = UpdateDownloader()
-                let update = try await downloader.download(from: url)
+                let update = try await downloader.download(from: url, expectedVersion: info.latestVersion)
+                defer { try? FileManager.default.removeItem(at: update.cleanupDirectoryURL) }
                 updateMessage = storeMessage(.installingUpdate)
-                try AppRelauncher.relaunch(
-                    replacingWith: update.appURL,
-                    cleanupDirectoryURL: update.cleanupDirectoryURL
-                )
+                try await Task.detached(priority: .utility) {
+                    try AppRelauncher.relaunch(replacingWith: update.appURL)
+                }.value
                 NSApp.terminate(nil)
             } catch {
                 isUpdating = false
@@ -409,7 +467,12 @@ final class UsageBoardStore: ObservableObject {
         invalidateDisplayNames()
         var next: [UUID: PluginSnapshot] = [:]
         for plugin in configuration.plugins {
-            next[plugin.id] = snapshots[plugin.id] ?? makeSnapshot(for: plugin)
+            let old = snapshots[plugin.id]
+            next[plugin.id] = makeSnapshot(
+                for: plugin, state: old?.state ?? .idle, items: old?.items ?? [],
+                updatedAt: old?.updatedAt, badge: old?.badge,
+                badgeColor: old?.badgeColor, chart: old?.chart
+            )
         }
         snapshots = next
     }
@@ -475,7 +538,7 @@ final class UsageBoardStore: ObservableObject {
                     guard let self else { return }
                     guard let current = self.configuration.plugins.first(where: { $0.id == id }),
                           current.enabled else { return }
-                    if self.isSystemActive, self.isPluginReadyToRun(current) {
+                    if self.isSystemActive {
                         self.refresh(pluginID: id)
                     }
                     let delay = self.nextSchedulerDelay(pluginID: id, interval: interval)

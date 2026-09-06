@@ -25,6 +25,7 @@ enum SettingsTab: CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var store: UsageBoardStore
     @State private var selectedTab: SettingsTab = .general
+    @State private var pluginDraft: PluginConfiguration?
 
     private var strings: AppLocalization {
         .shared
@@ -44,6 +45,16 @@ struct SettingsView: View {
 
                 Divider()
 
+                if let error = store.lastError {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color.red.opacity(0.08))
+                }
+
                 // Content area
                 switch selectedTab {
                 case .general:
@@ -52,7 +63,7 @@ struct SettingsView: View {
                             .padding(20)
                     }
                 case .plugins:
-                    PluginSettingsView(store: store)
+                    PluginSettingsView(store: store, draft: $pluginDraft)
                 case .about:
                     AboutView(store: store)
                 }

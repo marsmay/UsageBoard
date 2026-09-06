@@ -9,7 +9,6 @@ struct PluginSettingsCard: View {
     var language: AppLanguage
     var displayName: String
     var onReloadMetadata: () -> Void
-    var onRemove: () -> Void
 
     private var strings: AppLocalization {
         .shared
@@ -53,6 +52,8 @@ struct PluginSettingsCard: View {
                                 .font(.system(size: 12))
                         }
                         .buttonStyle(.borderless)
+                        .help(strings.text(.chooseScript))
+                        .accessibilityLabel(strings.text(.chooseScript))
                         Button {
                             onReloadMetadata()
                         } label: {
@@ -60,6 +61,8 @@ struct PluginSettingsCard: View {
                                 .font(.system(size: 12))
                         }
                         .buttonStyle(.borderless)
+                        .help(strings.text(.reloadMetadata))
+                        .accessibilityLabel(strings.text(.reloadMetadata))
                     }
                 }
 
@@ -122,6 +125,7 @@ struct PluginSettingsCard: View {
         panel.directoryURL = pluginsDirectoryURL
         if panel.runModal() == .OK, let url = panel.url {
             plugin.executablePath = url.path
+            onReloadMetadata()
         }
     }
 }
@@ -146,6 +150,7 @@ struct PluginParameterField: View {
                 .frame(width: 100, alignment: .trailing)
                 input
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(parameter.localizedLabel(language: language))
             }
         }
         .padding(.horizontal, 10)

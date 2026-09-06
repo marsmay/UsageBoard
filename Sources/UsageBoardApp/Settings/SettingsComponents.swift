@@ -37,7 +37,7 @@ struct SettingsRow<Content: View>: View {
                 if let hint {
                     Text(hint)
                         .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(width: 180, alignment: .trailing)

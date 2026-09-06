@@ -32,9 +32,11 @@ public struct DownloadedUpdate: Equatable, Sendable {
 public struct UpdateDownloader: Sendable {
     public init() {}
 
-    public func download(from url: URL) async throws -> DownloadedUpdate {
-        let (tempURL, _) = try await URLSession.shared.download(from: url)
+    public func download(from url: URL, expectedVersion: String? = nil) async throws -> DownloadedUpdate {
+        try UpdateChecker.validateURL(url)
+        let (tempURL, response) = try await URLSession.shared.download(from: url)
         defer { try? FileManager.default.removeItem(at: tempURL) }
+        try UpdateChecker.validateResponse(response)
 
         let extractDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("usageboard-update-\(UUID().uuidString)")
@@ -56,20 +58,39 @@ public struct UpdateDownloader: Sendable {
 
         let appURLs = try FileManager.default.contentsOfDirectory(at: extractDir, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "app" }
-        guard let appURL = appURLs.first else {
+        guard appURLs.count == 1, let appURL = appURLs.first else {
             throw UpdateError.extractionFailed
         }
+        try Self.validateApp(at: appURL, expectedVersion: expectedVersion)
         shouldCleanExtractDir = false
         return DownloadedUpdate(appURL: appURL, cleanupDirectoryURL: extractDir)
+    }
+
+    static func validateApp(at url: URL, expectedVersion: String?) throws {
+        guard url.lastPathComponent == "UsageBoard.app",
+              (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
+              let bundle = Bundle(url: url),
+              bundle.bundleIdentifier == "ltd.may.UsageBoard",
+              bundle.object(forInfoDictionaryKey: "CFBundlePackageType") as? String == "APPL",
+              let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              expectedVersion == nil || version == expectedVersion,
+              let executable = bundle.executableURL,
+              executable.resolvingSymlinksInPath().path.hasPrefix(url.resolvingSymlinksInPath().path + "/"),
+              (try? executable.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+              FileManager.default.isExecutableFile(atPath: executable.path) else {
+            throw UpdateError.invalidApplication
+        }
     }
 }
 
 public enum UpdateError: Error, LocalizedError {
     case extractionFailed
+    case invalidApplication
 
     public var errorDescription: String? {
         switch self {
         case .extractionFailed: return "更新包解压失败"
+        case .invalidApplication: return "更新包中的应用标识、版本或可执行文件无效"
         }
     }
 }
@@ -84,15 +105,32 @@ public struct UpdateChecker: Sendable {
     }()
 
     public func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+        try Self.validateURL(url)
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let existing = components?.queryItems ?? []
         components?.queryItems = existing + [URLQueryItem(name: "_", value: String(Int.random(in: 1_000_000...9_999_999)))]
         guard let cacheBustURL = components?.url else {
             throw URLError(.badURL)
         }
-        let (data, _) = try await Self.session.data(from: cacheBustURL)
+        let (data, response) = try await Self.session.data(from: cacheBustURL)
+        try Self.validateResponse(response)
         let info = try UsageBoardJSON.decoder().decode(UpdateInfo.self, from: data)
+        guard let downloadURL = URL(string: info.downloadURL) else { throw URLError(.badURL) }
+        try Self.validateURL(downloadURL)
         return UpdateCheckResult(info: info, hasUpdate: Self.isVersion(info.latestVersion, newerThan: currentVersion))
+    }
+
+    static func validateURL(_ url: URL) throws {
+        guard url.scheme?.lowercased() == "https", url.host?.isEmpty == false,
+              url.user == nil, url.password == nil else { throw URLError(.badURL) }
+    }
+
+    static func validateResponse(_ response: URLResponse) throws {
+        guard let response = response as? HTTPURLResponse,
+              (200..<300).contains(response.statusCode), let url = response.url else {
+            throw URLError(.badServerResponse)
+        }
+        try validateURL(url)
     }
 
     public static func isVersion(_ candidate: String, newerThan current: String) -> Bool {

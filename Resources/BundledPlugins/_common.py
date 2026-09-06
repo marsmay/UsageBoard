@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import math
+import os
+import tempfile
 import ssl
 import socket
 import sys
@@ -91,14 +94,13 @@ def failure(message: str) -> int:
 # ─── Status / color helpers ─────────────────────────────────────────────────────
 
 def numeric(value: Any) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return 0
-    return 0
+    if not isinstance(value, (int, float, str)):
+        return 0
+    try:
+        result = float(value)
+        return result if math.isfinite(result) else 0
+    except (ValueError, OverflowError):
+        return 0
 
 
 def status_for(used: float, total: float) -> str:
@@ -158,3 +160,39 @@ def handle_url_error(error: urllib.error.URLError, translate: Any, language: str
     if isinstance(reason, OSError):
         return failure(translate(language, "connection_error"))
     return failure(translate(language, "network_error"))
+
+
+# ─── Disposable chart caches ──────────────────────────────────────────────────
+
+def load_json_cache(path: str, version: int) -> dict[str, Any] | None:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict) or payload.get("version") != version:
+            return None
+        if not isinstance(payload.get("days"), dict):
+            return None
+        return payload
+    except (OSError, ValueError):
+        return None
+
+
+def save_json_cache(path: str, payload: dict[str, Any]) -> None:
+    """Publish a complete cache atomically; cache failures must not fail a query."""
+    temporary_path = None
+    try:
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                         prefix=".usageboard-cache-", delete=False) as handle:
+            temporary_path = handle.name
+            json.dump(payload, handle, allow_nan=False)
+        os.replace(temporary_path, path)
+    except (OSError, ValueError, TypeError):
+        pass
+    finally:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass

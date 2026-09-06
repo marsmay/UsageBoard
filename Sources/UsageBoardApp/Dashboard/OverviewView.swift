@@ -37,6 +37,8 @@ struct OverviewView: View {
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.borderless)
+                    .help(AppLocalization.shared.text(.refresh))
+                    .accessibilityLabel(AppLocalization.shared.text(.refresh))
                     SettingsButton(iconSize: 13, buttonSize: 24)
                     QuitButton(language: store.activeLanguage, iconSize: 13, buttonSize: 24)
                 }
@@ -105,6 +107,8 @@ struct SettingsButton: View {
                 .frame(width: buttonSize, height: buttonSize)
         }
         .buttonStyle(.borderless)
+        .help(AppLocalization.shared.text(.settingsWindowTitle))
+        .accessibilityLabel(AppLocalization.shared.text(.settingsWindowTitle))
     }
 }
 
@@ -126,5 +130,6 @@ struct QuitButton: View {
         }
         .buttonStyle(.borderless)
         .help(strings.text(.quitUsageBoard))
+        .accessibilityLabel(strings.text(.quitUsageBoard))
     }
 }

@@ -15,7 +15,9 @@ struct CountdownLabel: View {
 
     private var formatted: String {
         guard let target else { return "-" }
-        let remaining = max(0, Int(target.timeIntervalSince(now)))
+        let seconds = target.timeIntervalSince(now)
+        guard seconds.isFinite, seconds < Double(Int.max) else { return "-" }
+        let remaining = Int(max(0, seconds))
         return String(format: "%02d:%02d", remaining / 60, remaining % 60)
     }
 }

@@ -35,7 +35,11 @@ public struct BundledPluginInstaller: Sendable {
                 continue
             }
 
-            if existingDestination != nil || fileManager.fileExists(atPath: destinationURL.path) {
+            // A regular file may be a user-customized plugin. Only replace links.
+            if existingDestination == nil, fileManager.fileExists(atPath: destinationURL.path) {
+                continue
+            }
+            if existingDestination != nil {
                 try fileManager.removeItem(at: destinationURL)
             }
             try fileManager.createSymbolicLink(at: destinationURL, withDestinationURL: sourceURL)

@@ -19,6 +19,7 @@ struct GeneralSettingsView: View {
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()
+                .accessibilityLabel(strings.text(.launchAtLogin))
                 .frame(width: 120, alignment: .leading)
             }
 
@@ -29,6 +30,7 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .labelsHidden()
+                .accessibilityLabel(strings.text(.displayMode))
                 .frame(width: 120, alignment: .leading)
                 .onChange(of: store.configuration.overviewDisplayMode) { _ in
                     store.persistConfiguration()
@@ -42,6 +44,7 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .labelsHidden()
+                .accessibilityLabel(strings.text(.chartMode))
                 .frame(width: 120, alignment: .leading)
                 .onChange(of: store.configuration.chartMode) { _ in
                     store.persistConfiguration()
@@ -55,6 +58,7 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .labelsHidden()
+                .accessibilityLabel(strings.text(.language))
                 .frame(width: 120, alignment: .leading)
                 .onChange(of: store.configuration.language) { newValue in
                     store.persistConfiguration()

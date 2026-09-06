@@ -31,14 +31,14 @@ UsageBoard 是一款 macOS menu bar 工具，用于集中展示各种 AI 服务�
 | 插件执行    | `Process`（子进程），Python 插件用 `/usr/bin/env python3`                 |
 | JSON 编解码 | 统一 `UsageBoardJSON.decoder()` / `UsageBoardJSON.encoder()`              |
 | 本地化      | `AppLocalization`（`(key, language)` 匹配）+ 插件元数据 `field@lang` 后缀 |
-| 测试        | XCTest（Core 层）+ pytest（Python 插件）                                  |
+| 测试        | XCTest（Core 与 App 层）+ pytest（Python 插件）                                  |
 | 开机启动    | `SMAppService`（macOS 13+ Login Items）                                   |
 
 常用验证命令：
 
 ```sh
 swift build               # 编译检查
-swift test                # Core 单元测试
+swift test                # Core 与 App 回归测试
 swift build -c release    # release 构建
 bash scripts/build.sh     # 本地 app 构建、签名、启动
 python3 -m pytest Tests/PluginTests/ -v   # Python 插件测试
@@ -96,6 +96,7 @@ UsageBoard/
 │           └── PlanTag.swift              # 套餐徽章标签
 ├── Tests/
 │   ├── UsageBoardTests/                   # XCTest 单元测试（Core 层）
+│   ├── UsageBoardAppTests/                # Store 调度、图表与布局测试
 │   └── PluginTests/                       # pytest 插件测试
 ├── Resources/
 │   ├── BundledPlugins/                    # 内置 Python 插件
@@ -105,6 +106,7 @@ UsageBoard/
 │   │   ├── deepseek-usage-plugin.py
 │   │   ├── glm-usage-plugin.py
 │   │   ├── minimax-usage-plugin.py
+│   │   ├── kimi-usage-plugin.py
 │   │   └── tavily-usage-plugin.py
 │   ├── PluginAuthoringGuide.html          # 插件编写说明
 │   └── UsageBoard.icns                    # 应用图标
@@ -231,8 +233,8 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 - **定时刷新**：每个插件一个独立的 `Task` 循环，按 `refreshIntervalSeconds`（最小 5 秒）调度，基于缓存 `updatedAt` 计算首次延迟。
 - **系统活动门控**：睡眠时暂停刷新，唤醒时检查到期插件立即刷新；4 小时安全超时防止唤醒通知丢失导致永久冻结。
-- **配置写入合并**：`scheduleConfigurationWrite` 使用 generation 计数器，连续快速修改只落盘最后一次。
-- **inflight 任务管理**：`inflightRefreshTasks` 跟踪正在运行的插件执行，禁用/删除插件时取消。
+- **配置写入合并**：`scheduleConfigurationWrite` 使用 generation 计数器，连续快速修改只落盘最后一次，退出前持续等待所有待写配置完成，包括等待期间新增的写入。配置以 0600 权限写入临时文件后原子替换。
+- **inflight 任务管理**：`inflightRefreshTasks` 跟踪正在运行的插件执行，重复刷新合并；禁用、删除或更新执行配置时取消，取消会传递至子进程。更新配置等待前一次执行结束后重跑，并切换缓存 ID，旧结果不得写回新配置。
 
 规范：
 
@@ -280,7 +282,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 读写 `config.json` 的值类型，提供配置目录、插件目录、状态目录的 URL。
 
 - `loadOrCreate()`：文件存在则加载，不存在则创建默认配置。
-- `save(_:)`：原子写入（`.atomic`），自动创建目录。
+- `save(_:)`：在同目录以 0600 权限写临时文件，再原子替换，自动创建目录。
 
 ### 6.3 PluginExecutor
 
@@ -288,10 +290,10 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 - `.py` 文件通过 `/usr/bin/env python3 <script>` 执行，其他可执行文件直接运行。
 - 参数通过 `--usageboard-param KEY=value` 传入，自动注入 `USAGEBOARD_LANGUAGE`。
-- 强制设置 `PYTHONIOENCODING=utf-8` + `LANG=en_US.UTF-8` + `LC_ALL=en_US.UTF-8` 环境变量，避免编码问题。
-- 默认 15 秒超时，超时后 `terminate()`（SIGTERM）并最多再等待 1 秒兜底，不发送 SIGKILL。
-- stdout 用 `DataBuffer`（`NSLock` + `readabilityHandler`）异步收集，避免 pipe 死锁。
-- 解码失败时先尝试解析 `{"error": "..."}` 格式的错误输出。
+- 强制设置 `PYTHONIOENCODING=utf-8` + `LANG=en_US.UTF-8` + `LC_ALL=en_US.UTF-8` 环境变量，避免编码问题；`PYTHONDONTWRITEBYTECODE=1` 禁止写入 Python 字节码，避免修改 app 包。
+- 默认 15 秒超时；超时或取消时发送 SIGTERM，1 秒后仍未退出则发送 SIGKILL。
+- stdout 用 `DataBuffer`（`NSLock` + `readabilityHandler`）异步收集，上限 8 MiB；stderr 最多保留 64 KiB，持续排空管道避免死锁。
+- 非空顶层 `error` 优先视为失败，即使同时包含成功字段。
 
 ### 6.4 PluginMetadataParser
 
@@ -311,7 +313,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 - 以 `_` 开头的文件（如 `_common.py`）不安装。
 - 已存在且指向正确源的符号链接跳过。
-- 目标已存在但不匹配时先删除再重建。
+- 目标为普通文件时保留；已有符号链接指向不同位置时替换链接。
 
 ### 6.7 UpdateChecker / UpdateDownloader / AppRelauncher
 
@@ -319,7 +321,9 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 1. `UpdateChecker.check()`：从 `UBUpdateCheckURL`（Info.plist 注入）获取 `version.json`，比较语义版本号。
 2. `UpdateDownloader.download()`：下载 zip，用 `ditto` 解压到临时目录。
-3. `AppRelauncher.relaunch(replacingWith:)`：生成 bash 脚本，等旧进程退出后替换 app、重签名、重启。
+3. `AppRelauncher.relaunch(replacingWith:)`：先在目标目录暂存并签名新 app；旧进程退出后将原 app 改名为备份，再替换并启动。移动或启动命令失败时恢复原 app；成功后清理备份。
+
+更新检查与下载只接受 HTTPS 和成功 HTTP 状态；下载后验证唯一 UsageBoard app 的标识、版本和包内可执行文件。UI 显示独立的检查中状态并阻止重复检查或安装。
 
 `AppRelauncher.relaunchCurrent()` 用于语言切换后的简单重启（不替换 app）。
 
@@ -340,7 +344,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 ### 7.1 DashboardView / OverviewView
 
-`DashboardView.swift` 包含面板展示的全部视图：
+`Dashboard/` 按职责拆分面板视图：
 
 | 视图                  | 职责                                                        |
 | --------------------- | ----------------------------------------------------------- |
@@ -358,7 +362,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 ### 7.2 SettingsView
 
-`SettingsView.swift` 包含设置窗口的全部视图：
+`Settings/` 按职责拆分设置视图：
 
 | 视图 / 组件                       | 职责                                                                            |
 | --------------------------------- | ------------------------------------------------------------------------------- |
@@ -373,7 +377,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 
 设置编辑规范：
 
-- 插件详情使用 **draft 机制**：编辑只改 `@State draft`，点击"保存"后才写回 Store。
+- 插件详情使用 **draft 机制**：编辑只改设置窗口持有、传入插件页的 draft，点击"保存"后通过 `updatePlugin` 校验路径和已启用插件的必填参数，再写回 Store；手动修改脚本路径时重新解析元数据和默认值。切换设置栏目保留草稿；切换或新增插件前提示保存或放弃未保存的编辑。
 - 启用/禁用和拖拽排序**即时生效**，不走 draft。
 - 语言切换弹出确认对话框，确认后通过 `AppRelauncher.relaunchCurrent()` 重启。
 
@@ -384,10 +388,10 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | 文件                    | 职责                                                                                  |
 | ----------------------- | ------------------------------------------------------------------------------------- |
 | `UBDesignTokens.swift`  | `UB.Radius`（card/bar）、`UB.Font`（各场景字体）、`UB.Canvas`（背景/卡片/分隔线颜色） |
-| `AppIconSquircle.swift` | 圆角方形图标（异步加载 + `NSCache` 内存缓存）                                         |
-| `BrandTile.swift`       | 品牌卡片组件                                                                          |
+| `AppIconSquircle.swift` | 圆角方形图标（SwiftUI 绘制）                                         |
+| `BrandTile.swift`       | 品牌图标（异步加载 + `NSCache` 内存缓存）                                                                          |
 | `CountdownLabel.swift`  | 下次刷新倒计时标签                                                                    |
-| `PlanTag.swift`         | 套餐徽章（黑色圆角背景 + 白色大写加粗文字）                                           |
+| `PlanTag.swift`         | 套餐徽章（按套餐或插件配置着色）                                           |
 
 规范：
 
@@ -424,14 +428,13 @@ PluginConfiguration
 ```
 UsageBoardStore.init()
   1. ConfigStore.loadOrCreate()           // 加载或创建配置
-  2. ConfigStore.save()                   // 立即回写，持久化新生成的 stateID
-  3. BundledPluginInstaller.installIfNeeded()  // 安装内置插件符号链接
-  4. reloadAllMetadata()                  // 重新解析所有插件元数据
-  5. ConfigStore.save()                   // 持久化更新后的配置
-  6. rebuildSnapshots()                   // 构建初始快照（idle 状态）
-  7. loadCachedStates()                   // 从缓存恢复上次数据
-  8. startSchedulers()                    // 为已启用插件启动定时刷新
-  9. observeSystemActivity()              // 监听系统睡眠/唤醒
+  2. BundledPluginInstaller.installIfNeeded()  // 安装内置插件符号链接
+  3. reloadAllMetadata()                  // 重新解析所有插件元数据
+  4. ConfigStore.save()                   // 一次持久化 stateID 与 metadata
+  5. rebuildSnapshots()                   // 构建初始快照（idle 状态）
+  6. loadCachedStates()                   // 从缓存恢复上次数据
+  7. startSchedulers()                    // 为已启用插件启动定时刷新
+  8. observeSystemActivity()              // 监听系统睡眠/唤醒
 ```
 
 ---
@@ -480,7 +483,7 @@ UsageBoardStore.init()
 
 ### 9.5 公共模块
 
-`_common.py` 提供：`parse_usageboard_params`、`app_language`、`make_translator`、`utc_now_iso`、`success`/`failure`、`numeric`/`status_for`/`color_for`/`color_for_pct`、`handle_http_error`/`handle_url_error`。新建插件应从 `_common` 导入复用，不在插件内重复实现。
+`_common.py` 提供：`parse_usageboard_params`、`app_language`、`make_translator`、`utc_now_iso`、`success`/`failure`、`numeric`/`status_for`/`color_for`/`color_for_pct`、`handle_http_error`/`handle_url_error`、`load_json_cache`/`save_json_cache`（校验缓存结构、原子写入）。新建插件应从 `_common` 导入复用，不在插件内重复实现。
 
 ---
 
@@ -504,15 +507,13 @@ UsageBoardStore.init()
 
 ### 11.1 Swift 单元测试
 
-当前测试覆盖（`Tests/UsageBoardTests/`）：
-
-当前测试均在 `Tests/UsageBoardTests/UsageBoardTests.swift`，按覆盖领域归类：
+Core 测试在 `Tests/UsageBoardTests/`，App 调度、配置保存与图表布局测试在 `Tests/UsageBoardAppTests/`。Core 主要覆盖：
 
 | 领域              | 测试                                                                                                                                        | 覆盖                                                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | 配置 / 路径       | `testConfigurationDecodesDefaultsAndSaves`、`testPluginsDirectoryIsNextToConfigurationFile`                                                 | 配置编解码与默认值、插件目录路径计算                                                                          |
 | 状态缓存          | `testPluginStateStoreSavesAndClampsRefreshInterval`、`testPluginStateStoreCacheHitsAfterDiskDelete`                                         | 磁盘读写与刷新间隔下限、磁盘文件删除后内存缓存仍命中                                                          |
-| 内置插件安装      | `testBundledPluginInstaller*`                                                                                                               | 符号链接安装与失效链接替换                                                                                    |
+| 内置插件安装      | `testBundledPluginInstaller*`                                                                                                               | 符号链接安装、失效链接替换与同名用户文件保护                                                                                    |
 | PluginOutput 解码 | `testPluginOutputDecodes*`                                                                                                                  | items/进度格式化、小数秒日期、chart 解码与缓存往返                                                            |
 | 插件执行器        | `testPluginExecutor*`、`testPluginParameterValuesBecomeArguments`                                                                           | chart 传播、非法/错误 JSON、解码路径定位、UTF-8 环境、超大 stdout 防 pipe 死锁、`--usageboard-param` 参数拼装 |
 | 元数据解析        | `testPluginMetadataParserReadsCommentBlock`、`testGLMPluginMetadataUsesStatPeriodWithoutProvider`、`testCodexPluginMetadataReadsParameters` | 注释块解析与多语言、内置插件实际元数据                                                                        |

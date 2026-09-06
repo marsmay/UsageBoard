@@ -12,7 +12,7 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
 - Scheduled refresh pauses during system sleep and resumes on wake.
 - Plugin-based usage queries with per-plugin configurable refresh intervals and parameters.
 - Plugin icon support: loads remote images from metadata config and caches them.
-- Subscription level badge display (black background, white rounded label).
+- Subscription badges colored by plan or plugin configuration.
 - Plugin settings UI auto-generated from script metadata, including segmented controls, directory pickers, and file pickers.
 - New plugins are disabled by default; required parameters are checked before enabling.
 - Plugin data cached to disk by `stateID`; last successful data shown on launch.
@@ -75,11 +75,11 @@ UsageBoard uses:
 
 Contents:
 
-- `config.json`: Main configuration file.
+- `config.json`: Main configuration file, including plugin parameters, saved with owner-only permissions (0600).
 - `plugins/`: User plugin directory. The file picker defaults to this location when adding plugins.
 - `states/`: Plugin data cache directory.
 
-On launch, the app creates symlinks in `plugins/` pointing to bundled plugins from `Contents/Resources/Plugins/` inside the app bundle (or `Resources/BundledPlugins/` during development).
+On launch, the app creates symlinks in `plugins/` pointing to bundled plugins from `Contents/Resources/Plugins/` inside the app bundle (or `Resources/BundledPlugins/` during development). Existing regular files with matching names are preserved; existing symlinks are refreshed when the app moves. Replace a bundled symlink with a standalone script to customize it.
 
 ## Configuration
 
@@ -156,7 +156,7 @@ Plugins are recommended to use Python scripts. UsageBoard executes `.py` plugins
 /usr/bin/env python3 /path/to/plugin.py --usageboard-param KEY=value --usageboard-param USAGEBOARD_LANGUAGE=en
 ```
 
-Plugins must output valid JSON to stdout. stderr can be used for debugging; non-zero exit codes, timeouts, or invalid JSON will show as plugin errors. Plugins can also write `{"error": "message"}` to stdout to report a failure, and UsageBoard shows that error in the plugin card body.
+Plugins must output valid JSON to stdout. Plugin stdout is limited to 8 MiB; stderr retains at most 64 KiB. Timeout, cancellation, or excessive stdout terminates the plugin process. Python bytecode caching is disabled to keep the app bundle unchanged. stderr can be used for debugging; non-zero exit codes, timeouts, or invalid JSON will show as plugin errors. Plugins can also write `{"error": "message"}` to stdout to report a failure, and UsageBoard shows that error in the plugin card body.
 
 See the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html) for complete documentation.
 
@@ -216,22 +216,15 @@ Supported parameter types:
 
 `choice` parameters render as segmented controls in Settings; `directory` parameters render as a path field with a folder picker; `file` parameters render as a path field with a file picker.
 
-Parameter reading example:
+Bundled plugins reuse the shared parameter helpers (standalone user plugins need `_common.py` alongside the script, or the standalone implementation in the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html)):
 
 ```python
-def parse_usageboard_params(argv):
-    values = {}
-    index = 0
-    while index < len(argv):
-        if argv[index] == "--usageboard-param" and index + 1 < len(argv):
-            key_value = argv[index + 1]
-            if "=" in key_value:
-                key, value = key_value.split("=", 1)
-                values[key] = value
-            index += 2
-        else:
-            index += 1
-    return values
+import sys
+from _common import parse_usageboard_params, app_language
+
+params = parse_usageboard_params(sys.argv[1:])
+language = app_language(params)
+api_key = params.get("API_KEY", "")
 ```
 
 UsageBoard also passes the current app language: `--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans` or `--usageboard-param USAGEBOARD_LANGUAGE=en`. Scripts should read this reserved parameter and return display text in the corresponding language.
@@ -300,7 +293,9 @@ Field descriptions:
 - `chart.message`: Optional message shown when stats data is empty or unavailable.
 - `error`: Optional top-level error message. When present and non-empty, the run is treated as failed and the text is shown in the card body.
 
-The bundled Zhipu, Claude, and Codex plugins provide a `STAT_PERIOD` parameter supporting `7d`, `15d`, and `30d`. The Zhipu plugin uses the domestic API endpoint and is compatible with both Zhipu and ZAI Coding Plan keys. The Claude plugin fetches subscription usage via OAuth API; its `PLAN` parameter supports a `none` option that skips the API call and returns only local JSONL stats. It also supports a `CLAUDE_ONLY` toggle to filter third-party models and can use `DATA_DIR` to point at the `~/.claude` data directory. The Codex plugin uses the `DATA_DIR` parameter to specify the data directory (default `~/.codex`), reads `auth.json` for authentication, and parses session files to generate token stats. Both Claude and Codex plugins use an incremental caching strategy stored in the data directory and re-scan today's data on every run. The DeepSeek plugin provides a `LIMIT` parameter for the displayed balance limit and colors the progress bar by the balance-to-limit ratio. The Kimi plugin queries Kimi Code's 5-hour rolling window and weekly usage and automatically displays the subscription plan mapped from the membership level returned by the API; unknown levels omit the plan badge.
+The bundled Zhipu, Claude, and Codex plugins provide a `STAT_PERIOD` parameter supporting `7d`, `15d`, and `30d`. The Zhipu plugin uses the domestic API endpoint and is compatible with both Zhipu and ZAI Coding Plan keys. The Claude plugin fetches subscription usage via OAuth API; its `PLAN` parameter supports a `none` option that skips the API call and returns only local JSONL stats. It also supports a `CLAUDE_ONLY` toggle to filter third-party models and can use `DATA_DIR` to point at the `~/.claude` data directory. The Codex plugin uses the `DATA_DIR` parameter to specify the data directory (default `~/.codex`), reads `auth.json` for authentication, and parses session files to generate token stats. Both Claude and Codex plugins use an incremental caching strategy stored in the data directory and re-scan the last cached day and subsequent days on every run. The DeepSeek plugin provides a `LIMIT` parameter for the displayed balance limit and colors the progress bar by the balance-to-limit ratio. The Kimi plugin queries Kimi Code's 5-hour rolling window and weekly usage and automatically displays the subscription plan mapped from the membership level returned by the API; unknown levels omit the plan badge.
+
+Claude, Codex, and GLM share atomic cache writes; a failed write preserves the previous complete cache.
 
 ## Installation
 

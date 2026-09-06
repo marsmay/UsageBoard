@@ -143,6 +143,7 @@ struct DashboardView: View {
 }
 
 struct EmptyPluginsView: View {
+    @Environment(\.openSettings) private var openSettings
     var language: AppLanguage
     private var strings: AppLocalization {
         .shared
@@ -158,6 +159,8 @@ struct EmptyPluginsView: View {
             Text(strings.text(.noPluginsDescription))
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            Button(strings.text(.settingsWindowTitle), action: openSettings)
+                .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity)
         .padding()

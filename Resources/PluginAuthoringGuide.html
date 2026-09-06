@@ -232,6 +232,7 @@
   </table>
 
   <h3>读取参数</h3>
+  <p>内置插件复用同目录 <code>_common.py</code> 的 <code>parse_usageboard_params</code> 和 <code>app_language</code>。独立用户插件可随脚本提供该模块；下例为无需公共模块的独立实现。</p>
   <pre><code>import sys
 
 def parse_usageboard_params(argv):
@@ -254,6 +255,7 @@ api_key = params.get("API_KEY", "")</code></pre>
   <p>UsageBoard 会额外传入当前 app 语言参数：<code>--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans</code> 或 <code>--usageboard-param USAGEBOARD_LANGUAGE=en</code>。脚本应读取这个保留参数，并直接返回对应语言的展示文本。</p>
 
   <h2>返回数据格式</h2>
+  <p>stdout 上限为 8 MiB，stderr 最多保留 64 KiB。超时、取消或 stdout 超限会终止插件进程；Python 执行禁用字节码缓存，避免修改 app 包。非空顶层 <code>error</code> 优先视为失败，即使同时返回成功字段。</p>
   <p>插件输出的 JSON 顶层对象必须包含 <code>updatedAt</code> 和 <code>items</code>。</p>
 
   <pre><code>{

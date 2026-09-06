@@ -51,6 +51,8 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from _common import (  # noqa: E402
+    load_json_cache,
+    save_json_cache,
     app_language,
     color_for_pct,
     failure,
@@ -409,29 +411,11 @@ def cache_path(api_key: str, cache_dir: str | None = None) -> str:
 
 
 def load_chart_cache(api_key: str, cache_dir: str | None = None) -> dict[str, Any] | None:
-    path = cache_path(api_key, cache_dir)
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if data.get("version") != CACHE_VERSION:
-            return None
-        if not isinstance(data.get("days"), dict):
-            return None
-        return data
-    except (OSError, json.JSONDecodeError):
-        return None
+    return load_json_cache(cache_path(api_key, cache_dir), CACHE_VERSION)
 
 
 def save_chart_cache(api_key: str, cache_data: dict[str, Any], cache_dir: str | None = None) -> None:
-    path = cache_path(api_key, cache_dir)
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(cache_data, f)
-    except OSError:
-        pass
+    save_json_cache(cache_path(api_key, cache_dir), cache_data)
 
 
 def chart_payload_to_daily(

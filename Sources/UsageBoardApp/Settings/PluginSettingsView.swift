@@ -8,7 +8,7 @@ struct PluginSettingsView: View {
     @ObservedObject var store: UsageBoardStore
     @State private var selectedPluginID: UUID?
     @State private var draggingPluginID: UUID?
-    @State private var draft: PluginConfiguration?
+    @Binding var draft: PluginConfiguration?
     @State private var searchText = ""
     private var strings: AppLocalization {
         .shared
@@ -22,6 +22,7 @@ struct PluginSettingsView: View {
             || draft.executablePath != original.executablePath
             || draft.refreshIntervalSeconds != original.refreshIntervalSeconds
             || draft.parameterValues != original.parameterValues
+            || draft.metadata != original.metadata
     }
 
     private var filteredPlugins: [PluginConfiguration] {
@@ -48,7 +49,7 @@ struct PluginSettingsView: View {
                 }
                 .padding(.horizontal, 8)
                 .frame(height: 22)
-                .background(Color.black.opacity(0.05))
+                .background(Color.primary.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, 10)
                 .padding(.top, 10)
@@ -56,12 +57,15 @@ struct PluginSettingsView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        if filteredPlugins.isEmpty && !searchText.isEmpty {
+                            Text(strings.text(.noSearchResults))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .padding()
+                        }
                         ForEach(filteredPlugins) { plugin in
                             pluginListRow(plugin)
                                 .tag(plugin.id)
-                                .onTapGesture {
-                                    loadDraft(for: plugin.id)
-                                }
                                 .onDrag {
                                     draggingPluginID = plugin.id
                                     return NSItemProvider(object: plugin.id.uuidString as NSString)
@@ -92,6 +96,8 @@ struct PluginSettingsView: View {
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.borderless)
+                    .help(strings.text(.addPlugin))
+                    .accessibilityLabel(strings.text(.addPlugin))
 
                     Button {
                         if let id = selectedPluginID {
@@ -106,6 +112,8 @@ struct PluginSettingsView: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(selectedPluginID == nil)
+                    .help(strings.text(.removePlugin))
+                    .accessibilityLabel(strings.text(.removePlugin))
 
                     Spacer()
 
@@ -143,16 +151,6 @@ struct PluginSettingsView: View {
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            if let lastError = store.lastError {
-                                Text(lastError)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.red)
-                                    .padding(10)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.red.opacity(0.08))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-
                             PluginSettingsCard(
                                 plugin: draftBinding,
                                 enabled: pluginEnabledBinding(draft),
@@ -161,10 +159,6 @@ struct PluginSettingsView: View {
                                 displayName: PluginDisplayNames.displayName(for: draft, language: store.activeLanguage)
                             ) {
                                 reloadDraftMetadata()
-                            } onRemove: {
-                                store.removePlugin(id: draft.id)
-                                selectedPluginID = nil
-                                self.draft = nil
                             }
                         }
                         .padding(20)
@@ -184,6 +178,7 @@ struct PluginSettingsView: View {
                         }
                         .disabled(!hasChanges)
                         .buttonStyle(.borderedProminent)
+                        .keyboardShortcut("s", modifiers: .command)
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
@@ -203,10 +198,9 @@ struct PluginSettingsView: View {
         }
         .frame(minHeight: 400)
         .onAppear {
-            if selectedPluginID == nil {
-                selectedPluginID = store.configuration.plugins.first?.id
-            }
-            if let id = selectedPluginID {
+            if let draft, store.configuration.plugins.contains(where: { $0.id == draft.id }) {
+                selectedPluginID = draft.id
+            } else if let id = store.configuration.plugins.first?.id {
                 loadDraft(for: id)
             }
         }
@@ -226,20 +220,39 @@ struct PluginSettingsView: View {
         }
     }
 
-    private func saveDraft() {
-        guard let draft else { return }
-        guard let index = store.configuration.plugins.firstIndex(where: { $0.id == draft.id }) else { return }
-        if !draft.executablePath.isEmpty && !FileManager.default.fileExists(atPath: draft.executablePath) {
-            store.lastError = strings.text(.scriptPathNotFound)
-            return
+    @discardableResult
+    private func saveDraft() -> Bool {
+        if let draft,
+           let original = store.configuration.plugins.first(where: { $0.id == draft.id }),
+           original.executablePath != draft.executablePath {
+            reloadDraftMetadata()
         }
-        store.configuration.plugins[index].name = draft.name
-        store.configuration.plugins[index].executablePath = draft.executablePath
-        store.configuration.plugins[index].refreshIntervalSeconds = max(draft.refreshIntervalSeconds, 5)
-        store.configuration.plugins[index].metadata = draft.metadata
-        store.configuration.plugins[index].parameterValues = draft.parameterValues
-        self.draft = store.configuration.plugins[index]
-        store.saveConfiguration()
+        guard let draft, store.updatePlugin(draft) else { return false }
+        self.draft = store.configuration.plugins.first(where: { $0.id == draft.id })
+        return true
+    }
+
+    private func selectPlugin(_ id: UUID) {
+        guard id != selectedPluginID else { return }
+        guard resolveUnsavedChanges() else { return }
+        loadDraft(for: id)
+    }
+
+    private func resolveUnsavedChanges() -> Bool {
+        if hasChanges {
+            let alert = NSAlert()
+            alert.messageText = strings.text(.unsavedChanges)
+            alert.addButton(withTitle: strings.text(.save))
+            alert.addButton(withTitle: strings.text(.discardChanges))
+            alert.addButton(withTitle: strings.text(.cancel))
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                guard saveDraft() else { return false }
+            case .alertSecondButtonReturn: break
+            default: return false
+            }
+        }
+        return true
     }
 
     private func reloadDraftMetadata() {
@@ -256,27 +269,35 @@ struct PluginSettingsView: View {
 
     private func pluginListRow(_ plugin: PluginConfiguration) -> some View {
         HStack(spacing: 8) {
-            BrandTile(
-                iconURL: plugin.metadata?.icon,
-                fallbackName: PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage),
-                size: 22
-            )
-            Text(PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))
-                .font(.system(size: 12.5, weight: selectedPluginID == plugin.id ? .semibold : .regular))
-                .foregroundStyle(plugin.enabled ? Color.primary : Color.secondary)
-                .lineLimit(1)
-            Spacer()
+            Button { selectPlugin(plugin.id) } label: {
+                HStack(spacing: 8) {
+                    BrandTile(
+                        iconURL: plugin.metadata?.icon,
+                        fallbackName: PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage),
+                        size: 22
+                    )
+                    Text(PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))
+                        .font(.system(size: 12.5, weight: selectedPluginID == plugin.id ? .semibold : .regular))
+                        .foregroundStyle(plugin.enabled ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selectedPluginID == plugin.id ? .isSelected : [])
             Toggle("", isOn: pluginEnabledBinding(plugin))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+                .accessibilityLabel("\(strings.text(.enabled)) \(store.displayNames[plugin.id] ?? PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(selectedPluginID == plugin.id ? Color.black.opacity(0.06) : Color.clear)
+                .fill(selectedPluginID == plugin.id ? Color.accentColor.opacity(0.16) : Color.clear)
         )
         .contentShape(Rectangle())
     }
@@ -296,6 +317,7 @@ struct PluginSettingsView: View {
     }
 
     private func choosePlugin() {
+        guard resolveUnsavedChanges() else { return }
         store.ensurePluginsDirectory()
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
@@ -350,7 +372,7 @@ struct PluginDropDelegate: DropDelegate {
             return false
         }
         let moved = plugins.remove(at: fromIndex)
-        plugins.insert(moved, at: toIndex > fromIndex ? toIndex : toIndex)
+        plugins.insert(moved, at: toIndex)
         self.draggingID = nil
         onDropCompleted()
         return true

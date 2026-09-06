@@ -56,7 +56,10 @@ struct BrandTile: View {
                 loadedImage = nil
                 return
             }
-            loadedImage = await BrandIconCache.shared.image(for: url)
+            loadedImage = nil
+            let image = await BrandIconCache.shared.image(for: url)
+            guard !Task.isCancelled else { return }
+            loadedImage = image
         }
     }
 
@@ -67,7 +70,7 @@ struct BrandTile: View {
     }
 
     private var fallbackGradient: LinearGradient {
-        let seed = abs(fallbackName.hashValue)
+        let seed = fallbackName.utf8.reduce(UInt(0)) { ($0 &* 31) &+ UInt($1) }
         let palette: [(Color, Color)] = [
             (Color(red: 0.353, green: 0.784, blue: 0.980), Color(red: 0.039, green: 0.518, blue: 1.0)),
             (Color(red: 0.482, green: 0.490, blue: 0.910), Color(red: 0.369, green: 0.361, blue: 0.902)),
@@ -76,7 +79,7 @@ struct BrandTile: View {
             (Color(red: 1.0, green: 0.420, blue: 0.710), Color(red: 0.851, green: 0.275, blue: 0.627)),
             (Color(red: 0.686, green: 0.322, blue: 0.871), Color(red: 0.478, green: 0.247, blue: 0.722)),
         ]
-        let pair = palette[seed % palette.count]
+        let pair = palette[Int(seed % UInt(palette.count))]
         return LinearGradient(colors: [pair.0, pair.1], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
