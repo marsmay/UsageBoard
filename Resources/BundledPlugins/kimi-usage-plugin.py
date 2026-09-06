@@ -5,7 +5,7 @@
 #   "name": "Kimi",
 #   "name@zh-Hans": "Kimi",
 #   "name@en": "Kimi",
-#   "icon": "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kimi.png",
+#   "icon": "icons/light/kimi.png",
 #   "description": "查询 Kimi Code 用量",
 #   "description@zh-Hans": "查询 Kimi Code 用量",
 #   "description@en": "Query Kimi Code usage",

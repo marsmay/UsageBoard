@@ -1,7 +1,36 @@
 import AppKit
 import SwiftUI
 
-private final class BrandIconCache: @unchecked Sendable {
+enum BrandIconSource {
+    static var resourceDirectoryURL: URL {
+        if let resources = Bundle.main.resourceURL,
+           FileManager.default.fileExists(atPath: resources.appendingPathComponent("icons").path) {
+            return resources
+        }
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources", isDirectory: true)
+    }
+
+    static func url(
+        for iconPath: String?,
+        isDark: Bool,
+        resourceDirectoryURL: URL = resourceDirectoryURL
+    ) -> URL? {
+        guard let iconPath, !iconPath.isEmpty else { return nil }
+        if let url = URL(string: iconPath), let scheme = url.scheme {
+            return ["https", "http", "file"].contains(scheme.lowercased()) ? url : nil
+        }
+        if isDark, iconPath.hasPrefix("icons/light/") {
+            let darkPath = "icons/dark/" + iconPath.dropFirst("icons/light/".count)
+            let darkURL = resourceDirectoryURL.appendingPathComponent(darkPath)
+            if FileManager.default.fileExists(atPath: darkURL.path) { return darkURL }
+        }
+        if iconPath.hasPrefix("/") { return URL(fileURLWithPath: iconPath) }
+        return resourceDirectoryURL.appendingPathComponent(iconPath)
+    }
+}
+
+final class BrandIconCache: @unchecked Sendable {
     static let shared = BrandIconCache()
     private let cache: NSCache<NSString, NSImage> = {
         let c = NSCache<NSString, NSImage>()
@@ -13,8 +42,17 @@ private final class BrandIconCache: @unchecked Sendable {
     func image(for url: URL) async -> NSImage? {
         let key = url.absoluteString as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = NSImage(data: data) else { return nil }
+        let data: Data
+        if url.isFileURL {
+            guard let contents = try? Data(contentsOf: url) else { return nil }
+            data = contents
+        } else {
+            guard let (contents, response) = try? await URLSession.shared.data(from: url),
+                  let response = response as? HTTPURLResponse,
+                  (200..<300).contains(response.statusCode) else { return nil }
+            data = contents
+        }
+        guard let image = NSImage(data: data) else { return nil }
         let cost = max(data.count, 1)
         cache.setObject(image, forKey: key, cost: cost)
         return image
@@ -27,6 +65,11 @@ struct BrandTile: View {
     var size: CGFloat = 22
 
     @State private var loadedImage: NSImage?
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var resolvedIconURL: URL? {
+        BrandIconSource.url(for: iconURL, isDark: colorScheme == .dark)
+    }
 
     var body: some View {
         let radius = size * 0.27
@@ -51,8 +94,8 @@ struct BrandTile: View {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
         )
-        .task(id: iconURL) {
-            guard let urlString = iconURL, let url = URL(string: urlString) else {
+        .task(id: resolvedIconURL) {
+            guard let url = resolvedIconURL else {
                 loadedImage = nil
                 return
             }

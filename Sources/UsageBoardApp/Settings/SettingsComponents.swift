@@ -26,24 +26,35 @@ struct SettingsSection<Content: View>: View {
 struct SettingsRow<Content: View>: View {
     var label: String
     var hint: String? = nil
+    var labelWidth: CGFloat? = nil
+    var required: Bool = false
     @ViewBuilder var value: Content
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(label)
-                    .font(UB.Font.formLabel)
-                    .foregroundStyle(.primary)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 2) {
+                    Text(label)
+                        .font(UB.Font.formLabel)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if required {
+                        Text("*").foregroundStyle(.red)
+                    }
+                }
                 if let hint {
                     Text(hint)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(width: 180, alignment: .trailing)
+            .frame(width: labelWidth, alignment: .leading)
+            .frame(maxWidth: labelWidth == nil ? .infinity : nil, alignment: .leading)
             value
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: labelWidth == nil ? nil : .infinity, alignment: .trailing)
         }
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 }

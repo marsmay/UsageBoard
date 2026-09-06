@@ -110,6 +110,12 @@ final class UsageBoardStore: ObservableObject {
         persistConfiguration()
     }
 
+    func setTheme(_ theme: AppTheme) {
+        guard configuration.theme != theme else { return }
+        configuration.theme = theme
+        persistConfiguration()
+    }
+
     /// Lightweight: only schedule a disk write (no snapshot/scheduler/refresh side effects).
     func persistConfiguration() {
         scheduleConfigurationWrite()

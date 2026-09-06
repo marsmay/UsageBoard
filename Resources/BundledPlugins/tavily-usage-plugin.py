@@ -5,7 +5,7 @@
 #   "name": "Tavily",
 #   "name@zh-Hans": "Tavily",
 #   "name@en": "Tavily",
-#   "icon": "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/tavily-color.png",
+#   "icon": "icons/light/tavily-color.png",
 #   "description": "查询 Tavily Search 月度用量",
 #   "description@zh-Hans": "查询 Tavily Search 月度用量",
 #   "description@en": "Query Tavily Search monthly usage",

@@ -16,47 +16,53 @@ struct AboutView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 22) {
-            AppIconSquircle(size: 88)
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("UsageBoard")
-                        .font(.system(size: 20, weight: .bold))
-                        .tracking(-0.3)
-                    Text(strings.text(.aboutDescription))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                }
+        ScrollView {
+            VStack(spacing: 0) {
+                AppIconSquircle(size: 64)
+                    .padding(.bottom, 14)
+                Text("UsageBoard")
+                    .font(.system(size: 23, weight: .semibold))
+                Text(strings.text(.aboutDescription))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+                Text(currentVersion)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(.top, 10)
 
-                HStack(spacing: 10) {
-                    Text(strings.text(.version))
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.secondary)
-                    Text(currentVersion)
-                        .font(.system(size: 12.5))
-                        .monospacedDigit()
-                    Button(store.isCheckingForUpdates ? strings.text(.checkingUpdate) : strings.text(.checkForUpdates)) {
-                        isUserChecking = true
-                        store.checkForUpdates()
-                    }
-                    .controlSize(.regular)
-                    .disabled(store.isCheckingForUpdates || store.isUpdating)
+                Divider().padding(.vertical, 22)
+
+                Button(store.isCheckingForUpdates ? strings.text(.checkingUpdate) : strings.text(.checkForUpdates)) {
+                    isUserChecking = true
+                    store.checkForUpdates()
+                }
+                .controlSize(.large)
+                .disabled(store.isCheckingForUpdates || store.isUpdating)
+
+                VStack(spacing: 8) {
                     if store.isCheckingForUpdates || store.isUpdating {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else if let updateMessage = store.updateMessage {
-                        Text(updateMessage)
-                            .font(.system(size: 11.5))
+                        ProgressView().controlSize(.small)
+                    }
+                    if let message = store.updateMessage {
+                        Text(message)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
                     }
                 }
+                .padding(.top, 12)
             }
-            Spacer()
+            .frame(maxWidth: 360)
+            .padding(28)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 32)
-        .padding(.top, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: store.availableUpdate) { newValue in
             guard isUserChecking, let newValue else { return }
             isUserChecking = false

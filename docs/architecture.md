@@ -54,7 +54,7 @@ UsageBoard/
 ├── Sources/
 │   ├── UsageBoardCore/                    # 核心逻辑，无 SwiftUI 依赖
 │   │   ├── CodableHelpers.swift           # AnyCodingKey 和多语言翻译编解码扩展
-│   │   ├── AppConfiguration.swift         # AppLanguage、DisplayMode、ChartMode、AppConfiguration
+│   │   ├── AppConfiguration.swift         # AppLanguage、AppTheme、DisplayMode、ChartMode、AppConfiguration
 │   │   ├── PluginConfiguration.swift      # 参数类型、参数元数据、插件元数据、插件配置
 │   │   ├── PluginOutput.swift             # UsageItem、PluginOutput、PluginChart 等
 │   │   ├── PluginSnapshot.swift           # PluginSnapshotState、PluginSnapshot、PluginCachedState
@@ -108,6 +108,7 @@ UsageBoard/
 │   │   ├── minimax-usage-plugin.py
 │   │   ├── kimi-usage-plugin.py
 │   │   └── tavily-usage-plugin.py
+│   ├── icons/                             # light/dark 插件 PNG 图标
 │   ├── PluginAuthoringGuide.html          # 插件编写说明
 │   └── UsageBoard.icns                    # 应用图标
 ├── scripts/
@@ -255,7 +256,7 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | `AppLanguage`                                              | 语言枚举（`zh-Hans`、`en`）                                                  |
 | `DisplayMode`                                              | 展示模式（`grouped`、`tabs`）                                                |
 | `ChartMode`                                                | 图表模式（`line`、`bar`）                                                    |
-| `AppConfiguration`                                         | 顶层配置（schema version、language、display/chart mode、plugins、launch at login） |
+| `AppConfiguration`                                         | 顶层配置（schema version、language、theme、display/chart mode、plugins、launch at login） |
 | `PluginConfiguration`                                      | 单个插件配置（`id`=运行时 UUID、`stateID`=持久化 ID、路径、参数值等）        |
 | `PluginMetadata`                                           | 插件元数据（name、description、icon、parameters，支持多语言翻译）            |
 | `PluginParameterMetadata`                                  | 参数定义（7 种类型：string/secret/integer/boolean/choice/directory/file）    |
@@ -360,14 +361,20 @@ UsageBoard 采用两层架构：**Core（纯逻辑）→ App（UI + 组装）**�
 | `TokenMetricView`     | 统计摘要数字（总量、日均、峰值等）                          |
 | `MeasuredScrollView`  | 自适应高度滚动容器，按调用方传入的高度预算封顶               |
 
+`DesignSystem/BrandTile.swift` 统一解析和加载图标：`icon` 字符串兼容 HTTP(S)、绝对文件路径、file URL 和 app 资源相对路径。内置配置使用 `icons/light/<filename>`，以 app 的 Resources 为根，开发时 fallback 到当前目录的 Resources。深色主题优先使用同名 dark 文件，缺失时回退 light。SwiftUI task 以解析后的 URL 为标识，主题变化会重新加载，取消的旧任务不回写；本地文件直接读取，远程请求检查 HTTP 成功状态，NSCache 按实际 URL 分开缓存。构建和发布脚本均将 `Resources/icons/` 复制到包内 `Contents/Resources/icons/`。
+
 ### 7.2 SettingsView
+
+通用页以“外观 / 使用偏好”分组，提供浅色、深色、跟随系统主题。`AppConfiguration.theme` 默认 `system`，旧配置解码兼容；`UsageBoardStore.setTheme` 更新并持久保存，AppDelegate 订阅主题变更设置 `NSApp.appearance`，同步已有 popover 及 hosting view。`system` 使用 nil 外观继承，避免冻结当前系统主题；无需重启。
+
+侧栏不显示版本号；关于页集中展示应用信息、版本和独立更新操作/消息，支持提示换行和滚动。插件列表宽 190，基础选项和参数共用 SettingsRow（左侧 96 pt 标签、右侧控件），choice 直接比较选项文字宽度和可用空间，只创建分段选择或回退菜单其中一种控件，避免 ViewThatFits 对原生控件的重复测量；通用页的主题、显示、图表、语言也统一为分段选择，控件右对齐，开关使用 mini 尺寸；搜索、排序、保存、重置和草稿处理保持原有行为。
 
 `Settings/` 按职责拆分设置视图：
 
 | 视图 / 组件                       | 职责                                                                            |
 | --------------------------------- | ------------------------------------------------------------------------------- |
 | `SettingsView`                    | 顶层骨架：sidebar + detail，三个 tab（通用/插件/关于）                          |
-| `GeneralSettingsView`             | 开机启动、语言、展示模式、图表模式                                              |
+| `GeneralSettingsView`             | 主题、开机启动、语言、展示模式、图表模式                                              |
 | `PluginSettingsView`              | 插件列表（拖拽排序）+ 详情面板（draft 机制编辑）                                |
 | `PluginSettingsCard`              | 单个插件详情卡片：参数表单、启用/禁用、保存/重置                                |
 | `PluginParameterField`            | 按参数类型渲染对应输入控件（text/secret/integer/boolean/choice/directory/file） |

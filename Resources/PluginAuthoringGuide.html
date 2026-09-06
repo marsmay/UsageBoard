@@ -174,7 +174,7 @@
       </tr>
       <tr>
         <td><code>icon</code></td>
-        <td>可选。图标图片 URL，显示在插件卡片标题前。图片会被内存缓存，首次加载后不再重复下载。不设置时显示默认拼图图标。</td>
+        <td>可选。支持 HTTP(S) URL、绝对文件路径、file:// URL 或 app 资源相对路径（如 <code>icons/light/kimi.png</code>）。相对路径以 app 的 Contents/Resources/ 为根，开发运行时以当前工作目录的 Resources/ 为根。深色主题优先使用同名 icons/dark/ 文件，缺失时回退 light。图片按实际 URL 缓存；未设置或加载失败时显示名称首字母占位。</td>
       </tr>
       <tr>
         <td><code>description</code></td>

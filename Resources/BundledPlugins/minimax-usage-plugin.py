@@ -5,7 +5,7 @@
 #   "name": "MiniMax",
 #   "name@zh-Hans": "MiniMax",
 #   "name@en": "MiniMax",
-#   "icon": "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/minimax-color.png",
+#   "icon": "icons/light/minimax-color.png",
 #   "description": "查询 MiniMax Coding Plan 用量",
 #   "description@zh-Hans": "查询 MiniMax Coding Plan 用量",
 #   "description@en": "Query MiniMax Coding Plan usage",

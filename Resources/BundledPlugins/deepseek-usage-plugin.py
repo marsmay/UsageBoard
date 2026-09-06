@@ -5,7 +5,7 @@
 #   "name": "DeepSeek",
 #   "name@zh-Hans": "DeepSeek",
 #   "name@en": "DeepSeek",
-#   "icon": "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/deepseek-color.png",
+#   "icon": "icons/light/deepseek-color.png",
 #   "description": "查询 DeepSeek API 余额",
 #   "description@zh-Hans": "查询 DeepSeek API 余额",
 #   "description@en": "Query DeepSeek API balance",

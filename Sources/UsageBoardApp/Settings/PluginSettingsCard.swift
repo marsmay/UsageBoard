@@ -22,6 +22,7 @@ struct PluginSettingsCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(displayName)
                         .font(UB.Font.detailTitle)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let desc = plugin.metadata?.localizedDescription(language: language), !desc.isEmpty {
                         Text(desc)
                             .font(.system(size: 11.5))
@@ -30,18 +31,22 @@ struct PluginSettingsCard: View {
                 }
                 Spacer()
                 Toggle(strings.text(.enabled), isOn: enabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .controlSize(.mini)
+                    .accessibilityLabel(strings.text(.enabled))
             }
 
             Divider()
 
             // Fields
             VStack(alignment: .leading, spacing: 0) {
-                pluginRow(strings.text(.name)) {
+                SettingsRow(label: strings.text(.name), labelWidth: 96) {
                     TextField(strings.text(.pluginNamePlaceholder), text: $plugin.name)
                         .textFieldStyle(.roundedBorder)
                 }
 
-                pluginRow(strings.text(.script)) {
+                SettingsRow(label: strings.text(.script), labelWidth: 96) {
                     HStack(spacing: 4) {
                         TextField(strings.text(.scriptPathPlaceholder), text: $plugin.executablePath)
                             .textFieldStyle(.roundedBorder)
@@ -66,7 +71,7 @@ struct PluginSettingsCard: View {
                     }
                 }
 
-                pluginRow(strings.text(.refreshInterval)) {
+                SettingsRow(label: strings.text(.refreshInterval), labelWidth: 96) {
                     HStack(spacing: 4) {
                         TextField(strings.text(.seconds), value: $plugin.refreshIntervalSeconds, format: .number)
                             .textFieldStyle(.roundedBorder)
@@ -100,21 +105,7 @@ struct PluginSettingsCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-    }
-
-    @ViewBuilder
-    private func pluginRow<Content: View>(_ label: String, @ViewBuilder value: () -> Content) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 13))
-                .lineLimit(1)
-                .frame(width: 100, alignment: .trailing)
-                .foregroundStyle(.primary)
-            value()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
+        .controlSize(.small)
     }
 
     private func chooseExecutable() {
@@ -136,25 +127,14 @@ struct PluginParameterField: View {
     var language: AppLanguage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                HStack(spacing: 2) {
-                    Text(parameter.localizedLabel(language: language))
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                    if parameter.required {
-                        Text("*")
-                            .foregroundStyle(.red)
-                    }
-                }
-                .frame(width: 100, alignment: .trailing)
-                input
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(parameter.localizedLabel(language: language))
-            }
+        SettingsRow(
+            label: parameter.localizedLabel(language: language),
+            labelWidth: 96,
+            required: parameter.required
+        ) {
+            input
+                .accessibilityLabel(parameter.localizedLabel(language: language))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -166,18 +146,27 @@ struct PluginParameterField: View {
         case .integer:
             TextField(parameter.localizedPlaceholder(language: language) ?? "", text: valueBinding)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 160)
+                .frame(width: 80)
         case .boolean:
             Toggle("", isOn: boolBinding)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
                 .labelsHidden()
         case .choice:
-            Picker("", selection: valueBinding) {
-                ForEach(parameter.options) { option in
-                    Text(option.localizedLabel(language: language)).tag(option.value)
+            GeometryReader { geometry in
+                Group {
+                    if segmentedChoiceWidth <= geometry.size.width {
+                        choicePicker
+                            .pickerStyle(.segmented)
+                            .frame(width: segmentedChoiceWidth)
+                    } else {
+                        choicePicker
+                            .pickerStyle(.menu)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .frame(height: 22)
         case .string:
             TextField(parameter.localizedPlaceholder(language: language) ?? "", text: valueBinding)
                 .textFieldStyle(.roundedBorder)
@@ -205,6 +194,7 @@ struct PluginParameterField: View {
                     Image(systemName: "folder")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(parameter.localizedLabel(language: language))
             }
         case .file:
             HStack(spacing: 6) {
@@ -223,8 +213,26 @@ struct PluginParameterField: View {
                     Image(systemName: "doc")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(parameter.localizedLabel(language: language))
             }
         }
+    }
+
+    private var choicePicker: some View {
+        Picker("", selection: valueBinding) {
+            ForEach(parameter.options) { option in
+                Text(option.localizedLabel(language: language)).tag(option.value)
+            }
+        }
+        .labelsHidden()
+    }
+
+    private var segmentedChoiceWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let labelWidth = parameter.options.map {
+            ($0.localizedLabel(language: language) as NSString).size(withAttributes: [.font: font]).width
+        }.reduce(0, +)
+        return ceil(labelWidth + 20 * CGFloat(parameter.options.count))
     }
 
     private var valueBinding: Binding<String> {

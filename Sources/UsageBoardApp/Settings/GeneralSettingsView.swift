@@ -11,59 +11,85 @@ struct GeneralSettingsView: View {
     }
 
     var body: some View {
-        SettingsSection {
-            SettingsRow(label: strings.text(.launchAtLogin), hint: strings.text(.launchAtLoginHint)) {
-                Toggle("", isOn: Binding(
-                    get: { store.configuration.launchAtLogin },
-                    set: { newValue in store.requestLaunchAtLogin(newValue) }
-                ))
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .accessibilityLabel(strings.text(.launchAtLogin))
-                .frame(width: 120, alignment: .leading)
-            }
-
-            SettingsRow(label: strings.text(.displayMode), hint: strings.text(.displayModeHint)) {
-                Picker("", selection: $store.configuration.overviewDisplayMode) {
-                    ForEach(DisplayMode.allCases) { mode in
-                        Text(strings.displayModeName(mode)).tag(mode)
+        VStack(spacing: 20) {
+            SettingsSection(title: strings.text(.appearanceSection)) {
+                SettingsRow(label: strings.text(.theme)) {
+                    Picker(strings.text(.theme), selection: Binding(
+                        get: { store.configuration.theme },
+                        set: { store.setTheme($0) }
+                    )) {
+                        ForEach(AppTheme.allCases) { theme in
+                            Text(strings.themeName(theme)).tag(theme)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .accessibilityLabel(strings.text(.theme))
+                    .frame(width: 210, alignment: .trailing)
+                }
+                Divider().padding(.horizontal, 14)
+                SettingsRow(label: strings.text(.displayMode), hint: strings.text(.displayModeHint)) {
+                    Picker(strings.text(.displayMode), selection: $store.configuration.overviewDisplayMode) {
+                        ForEach(DisplayMode.allCases) { mode in
+                            Text(strings.displayModeName(mode)).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .accessibilityLabel(strings.text(.displayMode))
+                    .frame(width: 210, alignment: .trailing)
+                    .onChange(of: store.configuration.overviewDisplayMode) { _ in
+                        store.persistConfiguration()
                     }
                 }
-                .labelsHidden()
-                .accessibilityLabel(strings.text(.displayMode))
-                .frame(width: 120, alignment: .leading)
-                .onChange(of: store.configuration.overviewDisplayMode) { _ in
-                    store.persistConfiguration()
+                Divider().padding(.horizontal, 14)
+                SettingsRow(label: strings.text(.chartMode), hint: strings.text(.chartModeHint)) {
+                    Picker(strings.text(.chartMode), selection: $store.configuration.chartMode) {
+                        ForEach(ChartMode.allCases) { mode in
+                            Text(strings.chartModeName(mode)).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .accessibilityLabel(strings.text(.chartMode))
+                    .frame(width: 210, alignment: .trailing)
+                    .onChange(of: store.configuration.chartMode) { _ in
+                        store.persistConfiguration()
+                    }
                 }
             }
 
-            SettingsRow(label: strings.text(.chartMode), hint: strings.text(.chartModeHint)) {
-                Picker("", selection: $store.configuration.chartMode) {
-                    ForEach(ChartMode.allCases) { mode in
-                        Text(strings.chartModeName(mode)).tag(mode)
+            SettingsSection(title: strings.text(.behaviorSection)) {
+                SettingsRow(label: strings.text(.launchAtLogin), hint: strings.text(.launchAtLoginHint)) {
+                    Toggle(strings.text(.launchAtLogin), isOn: Binding(
+                        get: { store.configuration.launchAtLogin },
+                        set: { store.requestLaunchAtLogin($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .accessibilityLabel(strings.text(.launchAtLogin))
+                }
+                Divider().padding(.horizontal, 14)
+                SettingsRow(label: strings.text(.language), hint: strings.text(.languageRestartHint)) {
+                    Picker(strings.text(.language), selection: $store.configuration.language) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.displayName).tag(language)
+                        }
                     }
-                }
-                .labelsHidden()
-                .accessibilityLabel(strings.text(.chartMode))
-                .frame(width: 120, alignment: .leading)
-                .onChange(of: store.configuration.chartMode) { _ in
-                    store.persistConfiguration()
-                }
-            }
-
-            SettingsRow(label: strings.text(.language)) {
-                Picker("", selection: $store.configuration.language) {
-                    ForEach(AppLanguage.allCases) { language in
-                        Text(language.displayName).tag(language)
-                    }
-                }
-                .labelsHidden()
-                .accessibilityLabel(strings.text(.language))
-                .frame(width: 120, alignment: .leading)
-                .onChange(of: store.configuration.language) { newValue in
-                    store.persistConfiguration()
-                    if newValue != store.activeLanguage {
-                        showRestartRequiredAlert()
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .accessibilityLabel(strings.text(.language))
+                    .frame(width: 210, alignment: .trailing)
+                    .onChange(of: store.configuration.language) { newValue in
+                        store.persistConfiguration()
+                        if newValue != store.activeLanguage {
+                            showRestartRequiredAlert()
+                        }
                     }
                 }
             }

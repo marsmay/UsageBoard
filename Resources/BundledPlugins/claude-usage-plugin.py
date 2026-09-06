@@ -4,7 +4,7 @@
 #   "name": "Claude",
 #   "name@zh-Hans": "Claude",
 #   "name@en": "Claude",
-#   "icon": "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/claude-color.png",
+#   "icon": "icons/light/claude-color.png",
 #   "description": "查询 Claude 订阅用量和统计",
 #   "description@zh-Hans": "查询 Claude 订阅用量和统计",
 #   "description@en": "Query Claude subscription usage and stats",

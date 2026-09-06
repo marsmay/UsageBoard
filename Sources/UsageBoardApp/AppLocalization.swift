@@ -6,6 +6,17 @@ struct AppLocalization {
 
     var language: AppLanguage
 
+    func themeName(_ theme: AppTheme) -> String {
+        switch (theme, language) {
+        case (.light, .en): return "Light"
+        case (.light, .zhHans): return "浅色"
+        case (.dark, .en): return "Dark"
+        case (.dark, .zhHans): return "深色"
+        case (.system, .en): return "System"
+        case (.system, .zhHans): return "跟随系统"
+        }
+    }
+
     func displayModeName(_ mode: DisplayMode) -> String {
         switch (mode, language) {
         case (.grouped, .en): return "Grouped"
@@ -95,6 +106,14 @@ struct AppLocalization {
         case (.chartMode, .zhHans): return "图表模式"
         case (.chartModeHint, .en): return "Show statistics as lines or stacked bars"
         case (.chartModeHint, .zhHans): return "以折线或堆叠直方展示统计数据"
+        case (.theme, .en): return "Theme"
+        case (.theme, .zhHans): return "主题"
+        case (.appearanceSection, .en): return "Appearance"
+        case (.appearanceSection, .zhHans): return "外观"
+        case (.behaviorSection, .en): return "Behavior"
+        case (.behaviorSection, .zhHans): return "使用偏好"
+        case (.languageRestartHint, .en): return "Applies after restarting"
+        case (.languageRestartHint, .zhHans): return "重启应用后生效"
         case (.language, .en): return "Language"
         case (.language, .zhHans): return "语言"
         case (.openPluginsFolder, .en): return "Open plugins folder"
@@ -107,8 +126,6 @@ struct AppLocalization {
         case (.save, .zhHans): return "保存"
         case (.selectPlugin, .en): return "Select a plugin to configure"
         case (.selectPlugin, .zhHans): return "选择一个插件查看配置"
-        case (.version, .en): return "Version"
-        case (.version, .zhHans): return "版本"
         case (.unknownVersion, .en): return "Unknown"
         case (.unknownVersion, .zhHans): return "未知"
         case (.checkingUpdate, .en): return "Checking..."
@@ -203,12 +220,15 @@ struct AppLocalization {
         case chartMode
         case chartModeHint
         case language
+        case theme
+        case appearanceSection
+        case behaviorSection
+        case languageRestartHint
         case openPluginsFolder
         case pluginAuthoringGuide
         case reset
         case save
         case selectPlugin
-        case version
         case unknownVersion
         case checkingUpdate
         case checkForUpdates

@@ -69,6 +69,9 @@ rm -rf "$APP_BUNDLE/Contents/Resources/Plugins/__pycache__"
 cp "$PROJECT_DIR/Resources/UsageBoard.icns" "$APP_BUNDLE/Contents/Resources/UsageBoard.icns"
 cp "$PROJECT_DIR/Resources/PluginAuthoringGuide.html" "$APP_BUNDLE/Contents/Resources/PluginAuthoringGuide.html"
 cp "$PROJECT_DIR/Resources/BundledPlugins/"*.py "$APP_BUNDLE/Contents/Resources/Plugins/"
+rm -rf "$APP_BUNDLE/Contents/Resources/icons"
+mkdir -p "$APP_BUNDLE/Contents/Resources/icons"
+cp -R "$PROJECT_DIR/Resources/icons/." "$APP_BUNDLE/Contents/Resources/icons/"
 
 # --- Inject update check URL into Info.plist ---
 /usr/libexec/PlistBuddy -c "Add :UBUpdateCheckURL string ${UPDATE_CHECK_URL}" "$PLIST" 2>/dev/null \

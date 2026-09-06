@@ -17,7 +17,7 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 - 新增插件默认不启用，启用前会检查必填参数。
 - 插件数据按 `stateID` 缓存到磁盘，启动后可展示上次成功数据。
 - 首次启动会把内置插件安装到用户插件目录。
-- 设置页支持开机启动、插件拖拽排序、插件帮助文档、检查更新和在线更新。
+- 设置页支持浅色 / 深色 / 跟随系统主题（即时生效）、开机启动、插件拖拽排序、插件帮助文档、检查更新和在线更新。
 - 用量展示支持百分比或数字占比，支持重置时间、进度条颜色，以及可切换折线图/堆叠直方图的 token 统计图。
 - 插件可用 `{"error": "错误信息"}` 返回失败原因，错误会直接显示在卡片内容区。
 - 支持中英文切换，App UI 和插件元数据均可按语言展示。
@@ -65,6 +65,8 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 
 内置插件源文件位于 [Resources/BundledPlugins](Resources/BundledPlugins)，其中 `_common.py` 是插件共享的公共模块，提供参数解析、翻译、HTTP 错误处理等工具函数。打包后它们会位于 app 包的 `Contents/Resources/Plugins/`。
 
+内置插件图标位于 [Resources/icons](Resources/icons)，包含 light/dark 两套 PNG 图标，随 app 打包到 `Contents/Resources/icons/`，离线可用并随界面主题切换。配置中的 `icon` 使用资源相对路径（如 `icons/light/kimi.png`），不依赖插件符号链接或开发机器的绝对路径。
+
 ## 运行时目录
 
 UsageBoard 默认使用：
@@ -81,6 +83,8 @@ UsageBoard 默认使用：
 
 当前实现会在启动时向 `plugins/` 目录创建内置插件的同名符号链接（以 `_` 开头的内部模块文件除外），来源是 app 包内的 `Contents/Resources/Plugins/`，开发运行时则 fallback 到项目的 `Resources/BundledPlugins/`。现有同名普通文件会保留，已有符号链接会随 app 位置更新；如需自定义内置插件，可将其链接替换为独立脚本文件。
 
+`icon` 也兼容 HTTP(S) URL、绝对文件路径和 `file://` URL。相对路径以 app 的 `Contents/Resources/` 为根，开发运行时以当前工作目录的 `Resources/` 为根；`icons/light/` 路径在深色主题下优先加载同名 `icons/dark/` 文件，缺失时回退 light，加载失败时显示名称首字母占位。
+
 ## 配置文件
 
 主配置 JSON 当前结构：
@@ -89,6 +93,7 @@ UsageBoard 默认使用：
 {
   "schemaVersion": 1,
   "language": "zh-Hans",
+  "theme": "system",
   "overviewDisplayMode": "tabs",
   "chartMode": "line",
   "launchAtLogin": false,
@@ -143,6 +148,7 @@ UsageBoard 默认使用：
 
 - `overviewDisplayMode` 支持 `grouped` 和 `tabs`。
 - `chartMode` 支持 `line` 和 `bar`。
+- `theme` 支持 `light`、`dark` 和 `system`，默认跟随系统；在通用设置中切换后立即作用于设置窗口和菜单面板，并持久保存。旧配置缺失此字段时按 `system` 处理。
 - `language` 支持 `zh-Hans` 和 `en`，修改后重启生效。
 - `launchAtLogin` 控制开机启动。
 - `plugins[].stateID` 是插件缓存 ID，会持久化。
@@ -410,6 +416,7 @@ Tests/
   UsageBoardTests/      XCTest 单元测试
 Resources/
   BundledPlugins/       内置 Python 插件
+  icons/                插件 light/dark 本地图标
   PluginAuthoringGuide.html
   UsageBoard.icns
 scripts/

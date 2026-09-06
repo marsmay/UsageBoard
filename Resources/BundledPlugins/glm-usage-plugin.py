@@ -5,7 +5,7 @@
 #   "name": "智谱",
 #   "name@zh-Hans": "智谱",
 #   "name@en": "Zhipu",
-#   "icon": "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/zhipu-color.png",
+#   "icon": "icons/light/zhipu-color.png",
 #   "description": "查询智谱 / ZAI Coding Plan 用量和 token 统计",
 #   "description@zh-Hans": "查询智谱 / ZAI Coding Plan 用量和 token 统计",
 #   "description@en": "Query Zhipu / ZAI Coding Plan usage and token stats",

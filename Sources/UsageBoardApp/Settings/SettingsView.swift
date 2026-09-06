@@ -94,19 +94,9 @@ struct SettingsView: View {
             .padding(.horizontal, 10)
 
             Spacer()
-
-            Text("v\(currentVersionString)")
-                .font(.system(size: 10.5))
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 8)
         }
         .frame(width: 188)
         .background(.regularMaterial)
-    }
-
-    private var currentVersionString: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
 
     private func sidebarItem(_ tab: SettingsTab) -> some View {
@@ -131,6 +121,7 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
     }
 
     // MARK: Page Header

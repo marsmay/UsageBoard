@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UsageBoardCore
 
@@ -10,10 +11,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
     private var settingsWindowController: NSWindowController?
+    private var themeSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
+        themeSubscription = store.$configuration
+            .map(\.theme)
+            .removeDuplicates()
+            .sink { [weak self] theme in
+                NSApp.appearance = theme.appearance
+                self?.popover?.appearance = theme.appearance
+                self?.popover?.contentViewController?.view.appearance = theme.appearance
+            }
         setupStatusItem()
     }
 
@@ -55,14 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         newPopover.behavior = .applicationDefined
         newPopover.animates = false
         newPopover.delegate = self
-        newPopover.appearance = NSApp.effectiveAppearance
+        newPopover.appearance = store.configuration.theme.appearance
         let hostingController = NSHostingController(
             rootView: OverviewView(store: store, maximumHeight: maximumHeight)
                 .environment(\.openSettings) { [weak self] in self?.openSettings() }
                 .frame(width: PopoverLayout.width)
                 .background(Color(nsColor: .windowBackgroundColor))
         )
-        hostingController.view.appearance = NSApp.effectiveAppearance
+        hostingController.view.appearance = store.configuration.theme.appearance
         newPopover.contentViewController = hostingController
         newPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover = newPopover

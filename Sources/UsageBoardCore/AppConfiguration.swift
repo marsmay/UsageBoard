@@ -28,9 +28,18 @@ public enum ChartMode: String, Codable, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 }
 
+public enum AppTheme: String, Codable, CaseIterable, Identifiable, Sendable {
+    case light
+    case dark
+    case system
+
+    public var id: String { rawValue }
+}
+
 public struct AppConfiguration: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var language: AppLanguage
+    public var theme: AppTheme
     public var overviewDisplayMode: DisplayMode
     public var chartMode: ChartMode
     public var plugins: [PluginConfiguration]
@@ -39,6 +48,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
     public init(
         schemaVersion: Int = 1,
         language: AppLanguage = .zhHans,
+        theme: AppTheme = .system,
         overviewDisplayMode: DisplayMode = .tabs,
         chartMode: ChartMode = .line,
         plugins: [PluginConfiguration] = [],
@@ -46,6 +56,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
     ) {
         self.schemaVersion = schemaVersion
         self.language = language
+        self.theme = theme
         self.overviewDisplayMode = overviewDisplayMode
         self.chartMode = chartMode
         self.plugins = plugins
@@ -55,6 +66,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
         case language
+        case theme
         case overviewDisplayMode
         case chartMode
         case plugins
@@ -65,6 +77,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhHans
+        theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
         overviewDisplayMode = try container.decodeIfPresent(DisplayMode.self, forKey: .overviewDisplayMode) ?? .tabs
         chartMode = try container.decodeIfPresent(ChartMode.self, forKey: .chartMode) ?? .line
         plugins = try container.decodeIfPresent([PluginConfiguration].self, forKey: .plugins) ?? []

@@ -48,7 +48,7 @@ struct PluginSettingsView: View {
                         .font(.system(size: 11.5))
                 }
                 .padding(.horizontal, 8)
-                .frame(height: 22)
+                .frame(height: 28)
                 .background(Color.primary.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, 10)
@@ -126,6 +126,7 @@ struct PluginSettingsView: View {
                     }
                     .buttonStyle(.borderless)
                     .help(strings.text(.openPluginsFolder))
+                    .accessibilityLabel(strings.text(.openPluginsFolder))
 
                     Button {
                         openPluginHelp()
@@ -136,11 +137,12 @@ struct PluginSettingsView: View {
                     }
                     .buttonStyle(.borderless)
                     .help(strings.text(.pluginAuthoringGuide))
+                    .accessibilityLabel(strings.text(.pluginAuthoringGuide))
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
-            .frame(width: 220)
+            .frame(width: 190)
             .frame(maxHeight: .infinity)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
 
@@ -161,7 +163,7 @@ struct PluginSettingsView: View {
                                 reloadDraftMetadata()
                             }
                         }
-                        .padding(20)
+                        .padding(16)
                     }
 
                     Divider()
@@ -196,7 +198,7 @@ struct PluginSettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minHeight: 400)
+        .frame(maxHeight: .infinity)
         .onAppear {
             if let draft, store.configuration.plugins.contains(where: { $0.id == draft.id }) {
                 selectedPluginID = draft.id
