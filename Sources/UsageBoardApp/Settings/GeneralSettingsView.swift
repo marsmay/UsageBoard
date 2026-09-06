@@ -6,6 +6,7 @@ import UsageBoardCore
 
 struct GeneralSettingsView: View {
     @ObservedObject var store: UsageBoardStore
+    @State private var isRestartAlertPresented = false
     private var strings: AppLocalization {
         .shared
     }
@@ -87,30 +88,27 @@ struct GeneralSettingsView: View {
                     .frame(width: 210, alignment: .trailing)
                     .onChange(of: store.configuration.language) { newValue in
                         store.persistConfiguration()
-                        if newValue != store.activeLanguage {
-                            showRestartRequiredAlert()
-                        }
+                        isRestartAlertPresented = newValue != store.activeLanguage
                     }
                 }
             }
         }
+        .alert(strings.text(.restartRequiredTitle), isPresented: $isRestartAlertPresented) {
+            Button(strings.text(.restartNow)) {
+                restartApplication()
+            }
+            Button(strings.text(.restartLater), role: .cancel) {}
+        } message: {
+            Text(strings.text(.restartRequiredMessage))
+        }
     }
 
-    private func showRestartRequiredAlert() {
-        let alert = NSAlert()
-        alert.messageText = strings.text(.restartRequiredTitle)
-        alert.informativeText = strings.text(.restartRequiredMessage)
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: strings.text(.restartNow))
-        alert.addButton(withTitle: strings.text(.restartLater))
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            do {
-                try AppRelauncher.relaunchCurrent()
-                NSApp.terminate(nil)
-            } catch {
-                store.lastError = "\(strings.text(.relaunchFailed)): \(error.localizedDescription)"
-            }
+    private func restartApplication() {
+        do {
+            try AppRelauncher.relaunchCurrent()
+            NSApp.terminate(nil)
+        } catch {
+            store.lastError = "\(strings.text(.relaunchFailed)): \(error.localizedDescription)"
         }
     }
 }

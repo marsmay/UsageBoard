@@ -63,6 +63,9 @@ struct OverviewView: View {
             )
         }
         .frame(maxHeight: maximumHeight)
+        // Keep the hosting window's maximum height tied to the current content,
+        // so a shorter tab can shrink a popover that previously grew taller.
+        .fixedSize(horizontal: false, vertical: true)
         .onPreferenceChange(PopoverHeaderHeightKey.self) { height in
             if height > 0, abs(headerHeight - height) > 0.5 {
                 headerHeight = height
