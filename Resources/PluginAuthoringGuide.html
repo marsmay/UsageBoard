@@ -109,19 +109,19 @@
 <body>
 <main>
   <h1>UsageBoard 插件编写说明</h1>
-  <p class="lead">插件是一个 Python 脚本。UsageBoard 会定时执行脚本，读取 stdout 中的 JSON，并把返回的用量项目渲染成进度条。</p>
+  <p class="lead">插件是一个独立可执行程序，推荐使用 Python 脚本。UsageBoard 会定时执行脚本，读取 stdout 中的 JSON，并把返回的用量项目渲染成进度条。</p>
 
   <h2>基本规则</h2>
   <ul>
     <li>脚本建议使用 <code>#!/usr/bin/env python3</code>。</li>
-    <li>UsageBoard 不通过 shell 执行脚本，会直接调用 Python 运行 <code>.py</code> 文件。</li>
+    <li>UsageBoard 不通过 shell 执行脚本，会通过 <code>/usr/bin/env python3</code> 运行 <code>.py</code> 文件，其他可执行文件直接运行。执行路径使用实际文件路径，不展开 <code>~</code> 或 shell 表达式。</li>
     <li>插件配置参数通过命令行传入，格式为 <code>--usageboard-param KEY=value</code>。</li>
     <li>脚本必须向 stdout 输出一个 JSON 对象。stderr 可用于调试，但不会作为用量数据解析。</li>
     <li>脚本退出码非 0、超时、stdout 不是合法 JSON，都会在对应插件卡片上显示错误。</li>
   </ul>
 
   <h2>声明配置参数</h2>
-  <p>在脚本开头注释中放入固定块 <code>UsageBoardPlugin</code>。UsageBoard 添加插件或刷新元数据时会读取这个注释块，并在设置界面自动生成表单。</p>
+  <p>在脚本前 80 行内放入完整的 <code>UsageBoardPlugin</code> JSON 注释块（含结束标记）。UsageBoard 添加插件或刷新元数据时会读取这个注释块，并在设置界面自动生成表单。</p>
 
   <pre><code>#!/usr/bin/env python3
 # UsageBoardPlugin:
@@ -222,7 +222,7 @@
       </tr>
       <tr>
         <td><code>options</code></td>
-        <td><code>choice</code> 类型使用，每项包含 <code>label</code> 和 <code>value</code>。</td>
+        <td><code>choice</code> 类型使用，每项包含 <code>label</code> 和 <code>value</code>；优先显示分段控件，宽度不足时回退菜单。</td>
       </tr>
       <tr>
         <td><code>directory</code> / <code>file</code></td>
@@ -255,8 +255,7 @@ api_key = params.get("API_KEY", "")</code></pre>
   <p>UsageBoard 会额外传入当前 app 语言参数：<code>--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans</code> 或 <code>--usageboard-param USAGEBOARD_LANGUAGE=en</code>。脚本应读取这个保留参数，并直接返回对应语言的展示文本。</p>
 
   <h2>返回数据格式</h2>
-  <p>stdout 上限为 8 MiB，stderr 最多保留 64 KiB。超时、取消或 stdout 超限会终止插件进程；Python 执行禁用字节码缓存，避免修改 app 包。非空顶层 <code>error</code> 优先视为失败，即使同时返回成功字段。</p>
-  <p>插件输出的 JSON 顶层对象必须包含 <code>updatedAt</code> 和 <code>items</code>。</p>
+  <p>默认执行超时为 15 秒；stdout 上限为 8 MiB，stderr 最多保留 64 KiB。超时、取消或 stdout 超限会终止插件进程；Python 执行禁用字节码缓存，避免修改 app 包。退出码非 0 时优先显示 stderr 或退出码错误；退出码为 0 时，非空顶层 <code>error</code> 优先视为失败，即使同时返回成功字段。成功对象必须提供 <code>updatedAt</code> 和 <code>items</code>。</p>
 
   <pre><code>{
   "updatedAt": "2026-04-29T00:00:00Z",
@@ -330,13 +329,16 @@ api_key = params.get("API_KEY", "")</code></pre>
       </tr>
       <tr>
         <td><code>color</code></td>
-        <td>可选。控制进度条颜色，支持 <code>blue</code>、<code>yellow</code>、<code>orange</code>、<code>red</code>、<code>green</code>；不传默认蓝色。</td>
+        <td>可选。控制进度条颜色，支持 <code>blue</code>、<code>yellow</code>、<code>orange</code>、<code>red</code>、<code>green</code>；缺失或无法识别时按进度切色：低于 60% 蓝、60% 至低于 80% 黄、80% 至低于 100% 橙、100% 红。<code>status</code> 不控制颜色。</td>
       </tr>
     </tbody>
   </table>
 
+  <h3>可选徽章字段</h3>
+  <p><code>badge</code> 是卡片标题旁的大写套餐名；<code>badgeColor</code> 支持 blue、orange、gray（或 grey）、indigo、purple、teal、green、red、yellow，显示同色文字和淡背景。未指定或无法识别时按 PRO、PLUS、TEAM、FREE、MAX 等套餐预设匹配。</p>
+
   <h3>可选图表字段</h3>
-  <p>顶层 <code>chart</code> 字段用于在插件卡片底部展示 token 统计图。当前支持 <code>kind: "line"</code>，每个 <code>bucket</code> 是一个时间点，每个 <code>segment</code> 是一个模型序列值。</p>
+  <p>顶层 <code>chart</code> 字段用于在插件卡片底部展示 token 统计图。使用 <code>kind: "line"</code> 数据结构，实际折线/堆叠直方图由通用设置的 <code>chartMode</code> 决定；每个 <code>bucket</code> 是一个时间点，每个 <code>segment</code> 是一个模型序列值。</p>
   <table>
     <thead>
       <tr>
@@ -364,7 +366,7 @@ api_key = params.get("API_KEY", "")</code></pre>
     </tbody>
   </table>
 
-  <p class="note">建议插件在查询失败时仍返回一个合法 JSON，并把错误写成一个 <code>status: "critical"</code> 的项目；这样用户能在 UsageBoard 界面里直接看到原因。</p>
+  <p class="note">查询失败时建议输出 <code>{"error": "错误原因"}</code> 并以退出码 0 结束，卡片会显示该错误。<code>status: "critical"</code> 只属于用量项目状态，不会让本次执行判定为失败。</p>
 </main>
 </body>
 </html>

@@ -11,12 +11,12 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 - 支持手动刷新、定时刷新、单卡片刷新、退出按钮。
 - 系统休眠时暂停定时刷新，唤醒后继续调度。
 - 插件化用量查询，插件可独立配置刷新间隔和参数。
-- 插件图标支持，从元数据配置加载远程图片并缓存。
+- 插件图标支持本地资源和远程图片缓存；内置图标离线可用，随明暗主题切换。
 - 订阅级别徽章显示（按套餐或插件配置着色）。
 - 插件设置界面从脚本元数据自动生成参数表单，支持分段选择控件和目录选择器。
 - 新增插件默认不启用，启用前会检查必填参数。
 - 插件数据按 `stateID` 缓存到磁盘，启动后可展示上次成功数据。
-- 首次启动会把内置插件安装到用户插件目录。
+- 每次启动检查并安装内置插件链接；在设置中添加需要的插件后再启用。
 - 设置页支持浅色 / 深色 / 跟随系统主题（即时生效）、开机启动、插件拖拽排序、插件帮助文档、检查更新和在线更新。
 - 用量展示支持百分比或数字占比，支持重置时间、进度条颜色，以及可切换折线图/堆叠直方图的 token 统计图。
 - 插件可用 `{"error": "错误信息"}` 返回失败原因，错误会直接显示在卡片内容区。
@@ -79,7 +79,8 @@ UsageBoard 默认使用：
 
 - `config.json`：主配置文件，包含插件参数，以仅当前用户可读写的权限（0600）保存。
 - `plugins/`：用户插件目录。添加插件时文件选择器默认打开这里。
-- `states/`：插件数据缓存目录。
+- `states/`：主程序保存的插件成功快照缓存。
+- `plugin-caches/`：智谱插件默认统计缓存，按 API key 的哈希前缀区分。Claude/Codex 的增量统计缓存另存于各自 `DATA_DIR/.usageboard-chart-cache.json`。
 
 当前实现会在启动时向 `plugins/` 目录创建内置插件的同名符号链接（以 `_` 开头的内部模块文件除外），来源是 app 包内的 `Contents/Resources/Plugins/`，开发运行时则 fallback 到项目的 `Resources/BundledPlugins/`。现有同名普通文件会保留，已有符号链接会随 app 位置更新；如需自定义内置插件，可将其链接替换为独立脚本文件。
 
@@ -102,7 +103,7 @@ UsageBoard 默认使用：
       "stateID": "stable-cache-id",
       "name": "Example",
       "enabled": false,
-      "executablePath": "~/Library/Application Support/UsageBoard/plugins/example-plugin.py",
+      "executablePath": "/absolute/path/to/example-plugin.py",
       "refreshIntervalSeconds": 300,
       "metadata": {
         "name": "Example",
@@ -151,7 +152,8 @@ UsageBoard 默认使用：
 - `theme` 支持 `light`、`dark` 和 `system`，默认跟随系统；在通用设置中切换后立即作用于设置窗口和菜单面板，并持久保存。旧配置缺失此字段时按 `system` 处理。
 - `language` 支持 `zh-Hans` 和 `en`，修改后重启生效。
 - `launchAtLogin` 控制开机启动。
-- `plugins[].stateID` 是插件缓存 ID，会持久化。
+- `plugins[].stateID` 是持久化缓存 ID；通过设置修改脚本路径、参数或元数据后会重新生成。
+- `plugins[].executablePath` 使用实际文件路径，不支持 `~` 或 shell 表达式展开；建议通过文件选择器填写。
 - `plugins[].enabled` 为 `false` 时不执行插件。
 - `plugins[].metadata` 通常由插件脚本头部注释块解析生成。
 - `plugins[].parameterValues` 保存设置界面填写的插件参数。
@@ -164,13 +166,13 @@ UsageBoard 默认使用：
 /usr/bin/env python3 /path/to/plugin.py --usageboard-param KEY=value --usageboard-param USAGEBOARD_LANGUAGE=zh-Hans
 ```
 
-插件必须向 stdout 输出 UsageBoard 可解析的 JSON。stdout 上限为 8 MiB，stderr 最多保留 64 KiB；超时、取消或输出超限会终止插件进程。Python 执行禁用字节码缓存，避免修改 app 包。stderr 可用于调试；退出码非 0、超时或 stdout 非法 JSON 都会显示为插件错误。插件也可以向 stdout 输出 `{"error": "错误信息"}` 表示失败，UsageBoard 会把该错误展示在插件卡片内容区。
+插件必须向 stdout 输出 UsageBoard 可解析的 JSON。stdout 上限为 8 MiB，stderr 最多保留 64 KiB；默认超时 15 秒；超时、取消或 stdout 超限会终止插件进程。Python 执行禁用字节码缓存，避免修改 app 包。stderr 可用于调试；退出码非 0、超时或 stdout 非法 JSON 都会显示为插件错误。插件也可以向 stdout 输出 `{"error": "错误信息"}` 并以退出码 0 结束以报告失败，UsageBoard 会把该错误展示在插件卡片内容区。
 
 更完整的说明见 [插件编写说明](Resources/PluginAuthoringGuide.html)。
 
 ### 参数元数据
 
-在脚本开头放入 `UsageBoardPlugin` 注释块，UsageBoard 会读取它并生成设置表单：
+在脚本前 80 行内放入完整的 `UsageBoardPlugin` JSON 注释块（包括结束标记），UsageBoard 会读取它并生成设置表单：
 
 ```python
 #!/usr/bin/env python3
@@ -222,7 +224,7 @@ UsageBoard 默认使用：
 - `directory`
 - `file`
 
-`choice` 参数在设置页显示为分段控件；`directory` 参数显示为路径输入框和文件夹选择器；`file` 参数显示为路径输入框和文件选择器。
+`choice` 参数在设置页优先显示为分段控件，宽度不足时回退菜单；`directory` 参数显示为路径输入框和文件夹选择器；`file` 参数显示为路径输入框和文件选择器。
 
 内置插件读取参数示例（独立用户插件需在脚本同目录提供 `_common.py`，或参考插件编写说明中的独立实现）：
 
@@ -305,18 +307,18 @@ UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOA
 - `items[].used` / `items[].limit`：已用量和总额度。
 - `items[].displayStyle`：`percent` 显示百分比，`ratio` 显示数字占比。
 - `items[].resetAt`：可选重置时间，ISO 8601 格式。
-- `items[].status`：`normal`、`warning`、`critical`、`unknown`。
-- `items[].color`：可选进度条颜色，支持 `blue`、`yellow`、`orange`、`red`、`green`，缺省蓝色。
-- `badge`：可选字符串，显示在插件卡片标题旁的圆角徽章中（白色大写加粗文字）。
+- `items[].status`：`normal`、`warning`、`critical`、`unknown`；该字段不控制进度条颜色，也不表示整个插件执行失败。
+- `items[].color`：可选进度条颜色，支持 `blue`、`yellow`、`orange`、`red`、`green`；未指定或无法识别时按进度切色：<60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红。
+- `badge`：可选字符串，显示在插件卡片标题旁的圆角徽章中（大写加粗文字，前景色配同色淡背景）。
 - `badgeColor`：可选字符串，徽标颜色，支持 `blue`、`orange`、`gray`、`indigo`、`purple`、`teal`、`green`、`red`、`yellow`；缺省时按 `badge` 文字匹配预设档位（如 PRO/MAX）。
-- `chart`：可选 token 统计图，当前支持 `kind: "line"`。
+- `chart`：可选 token 统计图，使用 `kind: "line"` 的数据结构；实际折线/直方图展示由全局 `chartMode` 决定。
 - `chart.period`：统计周期标识，例如 `7d`、`15d`、`30d`。
 - `chart.bucketUnit`：时间桶单位，支持 `hour` 或 `day`。
 - `chart.buckets[].segments[]`：每个时间桶的模型分段，包含 `model` 和 `tokens`。
 - `chart.message`：可选提示文案，统计数据为空或不可用时显示。
 - `error`：可选顶层错误信息；存在且非空时，该插件本次运行会被视为失败，错误文本显示在卡片内容区。
 
-内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过 `DATA_DIR` 参数指定数据目录（默认 `~/.codex`），从中读取 `auth.json` 获取认证令牌，并解析会话文件生成 token 统计。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中；每次运行重扫最后一个已缓存日及之后的数据。Claude、Codex 与智谱共享原子缓存读写，写入失败时保留之前的完整缓存。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
+内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过独立的 `AUTH_FILE` 参数读取认证文件（默认 `~/.codex/auth.json`），通过 `DATA_DIR` 指定会话统计目录（默认 `~/.codex`），`ENABLE_STATS` 控制是否统计。修改统计目录不会自动改变认证文件路径。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中；每次运行重扫最后一个已缓存日及之后的数据。Claude、Codex 与智谱共享原子缓存读写，写入失败时保留之前的完整缓存。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
 
 ## 安装
 
@@ -357,7 +359,10 @@ swift build
 
 ```bash
 swift test
+python3 -m pytest Tests/PluginTests -q
 ```
+
+Python 测试需要 pytest，使用临时数据和网络替身；不需要真实账号凭据。
 
 Release 构建：
 
@@ -371,39 +376,41 @@ swift build -c release
 bash scripts/build.sh
 ```
 
-`scripts/build.sh` 会停止正在运行的 UsageBoard，构建 release，复制二进制和内置插件到 `dist/UsageBoard.app`，通过 PlistBuddy 向 Info.plist 注入更新检查 URL，执行 ad-hoc 签名，然后启动 app。可通过 `UB_UPDATE_CHECK_URL` 环境变量自定义更新检查地址。
+`scripts/build.sh` 会停止正在运行的 UsageBoard，构建 release，复制二进制、内置插件、帮助文档和图标到 `dist/UsageBoard.app`，通过 PlistBuddy 向 Info.plist 注入更新检查 URL，执行 ad-hoc 签名，然后启动 app。可通过 `UB_UPDATE_CHECK_URL` 环境变量自定义更新检查地址。
 
 ## 发布
 
-生成并上传新版本：
+发布脚本会直接上传服务器；仅在确定发布时运行。脚本默认递增本地 app bundle 的 patch 版本，不从 release tag 推算；正式发布建议核对最近 tag 并显式传入版本。
 
 ```bash
 bash scripts/release.sh
 ```
 
-指定版本：
+指定版本及更新说明（替换下列占位符，更新说明可包含真实换行）：
 
-```bash
-bash scripts/release.sh 0.1.6
+```text
+bash scripts/release.sh <version> "<release notes>"
 ```
 
 发布脚本会：
 
 1. 从 `dist/UsageBoard.app/Contents/Info.plist` 读取当前版本。
-2. 生成新版本号。
+2. 使用指定版本，或将该本地版本的 patch 加一（bundle 不存在时从 0.1.0 初始化）。
 3. 自动从上个 release tag 到 HEAD 的提交生成更新说明（也可通过第二个参数手动传入）。
 4. 构建 release。
-5. 复制二进制和内置插件。
+5. 复制二进制、内置插件、帮助文档和图标。
 6. 通过 PlistBuddy 向 Info.plist 注入更新检查 URL。
 7. 重新签名并验证 app。
 8. 生成 `UsageBoard-<version>.zip`。
 9. 生成 `version.json`。
 10. 上传到脚本中配置的服务器路径。
-11. 清理远端旧 zip。
+11. 清理远端旧 zip，保留最近三个。
 
-当前发布产物示例：
+脚本不会创建或推送 Git tag、发布 GitHub Release、更新 Homebrew cask；完整发布需另外完成这些步骤，并核对本地、服务器、GitHub 下载包和 cask 的版本及 SHA-256 一致。发布前先停止旧 UsageBoard 实例；与 build.sh 不同，release.sh 不负责停止或启动应用。
 
-- `dist/UsageBoard-0.1.20.zip`
+发布产物：
+
+- `dist/UsageBoard-<version>.zip`
 - `dist/version.json`
 
 ## 项目结构
@@ -413,7 +420,9 @@ Sources/
   UsageBoardCore/       配置、模型、插件执行、缓存、更新等核心逻辑
   UsageBoardApp/        SwiftUI + AppKit macOS app
 Tests/
-  UsageBoardTests/      XCTest 单元测试
+  UsageBoardTests/      Core XCTest
+  UsageBoardAppTests/   Store、主题、语言、图标与布局 XCTest
+  PluginTests/          Python 插件测试
 Resources/
   BundledPlugins/       内置 Python 插件
   icons/                插件 light/dark 本地图标
@@ -421,10 +430,13 @@ Resources/
   UsageBoard.icns
 scripts/
   build.sh              本地构建、签名、启动
-  release.sh            发布脚本
+  release.sh            服务器发布脚本
+  prepare_codex_icon.py  从保留源图生成 Codex 图标（需要 Pillow）
 dist/
   UsageBoard.app        本地测试 app bundle
 ```
+
+开发分层、数据流与验证规范见 [架构说明](docs/architecture.md)。
 
 ## 许可证
 
