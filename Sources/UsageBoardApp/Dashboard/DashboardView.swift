@@ -8,13 +8,7 @@ struct DashboardView: View {
 
     private var enabledPlugins: [PluginConfiguration] {
         store.configuration.plugins.filter(\.enabled).filter { plugin in
-            let snapshot = store.snapshot(for: plugin)
-            // Hide cards whose plugin succeeded but produced nothing to show
-            // (e.g. Claude with both plan and stats period set to none).
-            if case .ready = snapshot.state {
-                return snapshot.hasVisibleContent
-            }
-            return true
+            store.snapshot(for: plugin).isVisibleOnDashboard
         }
     }
 

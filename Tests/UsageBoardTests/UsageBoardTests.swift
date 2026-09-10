@@ -254,6 +254,25 @@ final class UsageBoardTests: XCTestCase {
         ).hasVisibleContent)
     }
 
+    func testDashboardVisibilityAcrossEmptyRefreshAndRecovery() {
+        var snapshot = PluginSnapshot(id: UUID(), displayName: "P")
+        XCTAssertTrue(snapshot.isVisibleOnDashboard)
+        snapshot.state = .loading
+        XCTAssertTrue(snapshot.isVisibleOnDashboard, "First load must remain visible")
+        snapshot.state = .ready
+        snapshot.updatedAt = Date()
+        XCTAssertFalse(snapshot.isVisibleOnDashboard)
+        snapshot.state = .loading
+        XCTAssertFalse(snapshot.isVisibleOnDashboard, "Refreshing an empty success must stay hidden")
+        snapshot.state = .failed("Offline")
+        XCTAssertTrue(snapshot.isVisibleOnDashboard, "Failures must remain actionable")
+        snapshot.state = .ready
+        snapshot.credits = [PluginResetCredit(id: "c")]
+        XCTAssertTrue(snapshot.isVisibleOnDashboard)
+        snapshot.state = .loading
+        XCTAssertTrue(snapshot.isVisibleOnDashboard, "Existing content remains visible during refresh")
+    }
+
     func testResetCreditUrgencyThresholds() {
         let now = ISO8601DateFormatter().date(from: "2026-06-20T00:00:00Z")!
         func credit(afterDays days: Double) -> PluginResetCredit {

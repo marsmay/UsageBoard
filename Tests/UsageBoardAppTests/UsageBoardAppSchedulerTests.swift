@@ -5,6 +5,35 @@ import UsageBoardCore
 
 @MainActor
 final class UsageBoardAppSchedulerTests: XCTestCase {
+    func testEmptyCachedSnapshotStaysHiddenDuringRefresh() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-empty-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let plugin = PluginConfiguration(name: "Empty", executablePath: "/bin/echo")
+        let state = BlockingExecutorState()
+        let store = UsageBoardStore(
+            configStore: TestConfigStore(configuration: AppConfiguration(plugins: [plugin]), pluginsURL: root.appendingPathComponent("plugins")),
+            stateStore: CachedEmptyStateStore(),
+            executor: BlockingExecutor(state: state),
+            updateChecker: NoopUpdateChecker()
+        )
+        defer {
+            store.setPluginEnabled(id: plugin.id, enabled: false)
+            state.releaseAll()
+        }
+        XCTAssertEqual(store.snapshot(for: plugin).state, .ready)
+        XCTAssertFalse(store.snapshot(for: plugin).isVisibleOnDashboard)
+        store.refresh(pluginID: plugin.id, force: true)
+        try await state.waitForRunCount(1)
+        XCTAssertEqual(store.snapshot(for: plugin).state, .loading)
+        XCTAssertFalse(store.snapshot(for: plugin).isVisibleOnDashboard)
+        state.releaseAll()
+        for _ in 0..<100 where store.snapshot(for: plugin).state != .ready {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(store.snapshot(for: plugin).state, .ready)
+        XCTAssertFalse(store.snapshot(for: plugin).isVisibleOnDashboard)
+    }
+
     func testStoreDoesNotOverwriteConfigurationAfterLoadFailure() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("usageboard-app-tests-\(UUID().uuidString)", isDirectory: true)
@@ -306,6 +335,14 @@ private struct FailingLoadConfigStore: ConfigStoring {
     func pluginsDirectoryURL() -> URL {
         pluginsURL
     }
+}
+
+private struct CachedEmptyStateStore: PluginStateStoring {
+    func load(stateID: String) -> PluginCachedState? {
+        PluginCachedState(updatedAt: Date(), items: [])
+    }
+    func save(stateID: String, state: PluginCachedState) throws {}
+    func needsRefresh(stateID: String, intervalSeconds: Int) -> Bool { false }
 }
 
 private struct EmptyStateStore: PluginStateStoring {

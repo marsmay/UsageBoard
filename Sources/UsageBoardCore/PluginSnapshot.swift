@@ -51,6 +51,19 @@ public extension PluginSnapshot {
     var hasVisibleContent: Bool {
         !items.isEmpty || chart != nil || !credits.isEmpty
     }
+
+    /// Keep a successful empty result hidden while refreshing it, but always
+    /// expose first-load progress and failures so the user can act on them.
+    var isVisibleOnDashboard: Bool {
+        switch state {
+        case .ready:
+            return hasVisibleContent
+        case .loading:
+            return updatedAt == nil || hasVisibleContent
+        case .idle, .failed:
+            return true
+        }
+    }
 }
 
 public struct PluginCachedState: Codable, Equatable, Sendable {

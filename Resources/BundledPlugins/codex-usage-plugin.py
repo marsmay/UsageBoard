@@ -55,11 +55,14 @@ from __future__ import annotations
 import glob
 import json
 import os
+import queue
 import re
 import sys
+import threading
 import urllib.error
 import urllib.request
 from datetime import datetime, time, timedelta, timezone
+from time import monotonic
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -80,6 +83,9 @@ from _common import (  # noqa: E402
 
 ENDPOINT = "https://chatgpt.com/backend-api/wham/usage"
 CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+CREDITS_TIMEOUT_SECONDS = 2.0
+# Leave time to serialize stdout before PluginExecutor's 15-second deadline.
+CREDITS_DEADLINE_SECONDS = 12.0
 CACHE_VERSION = 1
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 
@@ -136,7 +142,7 @@ def fetch_usage(access_token: str, account_id: str) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def fetch_reset_credits(access_token: str, account_id: str) -> dict[str, Any]:
+def fetch_reset_credits(access_token: str, account_id: str, timeout: float = CREDITS_TIMEOUT_SECONDS) -> dict[str, Any]:
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
@@ -148,8 +154,29 @@ def fetch_reset_credits(access_token: str, account_id: str) -> dict[str, Any]:
         "User-Agent": "Mozilla/5.0",
     }
     request = urllib.request.Request(CREDITS_ENDPOINT, headers=headers)
-    with urllib.request.urlopen(request, timeout=15) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def best_effort_reset_credits(access_token: str, account_id: str, deadline: float) -> list[dict[str, Any]] | None:
+    timeout = min(CREDITS_TIMEOUT_SECONDS, deadline - monotonic())
+    if timeout <= 0:
+        return None
+    result: queue.Queue = queue.Queue()
+
+    def fetch() -> None:
+        try:
+            result.put(parse_reset_credits(fetch_reset_credits(access_token, account_id, timeout=timeout)) or None)
+        except Exception:
+            result.put(None)
+
+    # urllib's timeout covers socket operations, not the whole response. A daemon
+    # lets the plugin exit even if DNS or a trickling response outlives our budget.
+    threading.Thread(target=fetch, daemon=True).start()
+    try:
+        return result.get(timeout=max(0, min(timeout, deadline - monotonic())))
+    except queue.Empty:
+        return None
 
 
 def iso_or_none(value: Any) -> str | None:
@@ -600,6 +627,7 @@ def build_items(payload: dict[str, Any], language: str) -> tuple[list[dict[str, 
 
 
 def main() -> int:
+    credits_deadline = monotonic() + CREDITS_DEADLINE_SECONDS
     params = parse_usageboard_params(sys.argv[1:])
     language = app_language(params)
     auth_file = params.get("AUTH_FILE", "") or "~/.codex/auth.json"
@@ -641,14 +669,6 @@ def main() -> int:
     except Exception:
         return failure(translate(language, "usage_parse_failed"))
 
-    # Reset credits are best-effort: any failure leaves them out without
-    # affecting quota display.
-    credits: list[dict[str, Any]] | None = None
-    try:
-        credits = parse_reset_credits(fetch_reset_credits(access_token, account_id)) or None
-    except Exception:
-        credits = None
-
     chart = None
     if enable_stats:
         try:
@@ -660,6 +680,7 @@ def main() -> int:
 
     if not items:
         return failure(translate(language, "no_quota_data"))
+    credits = best_effort_reset_credits(access_token, account_id, credits_deadline)
     return success(items, badge=badge, chart=chart, credits=credits)
 
 

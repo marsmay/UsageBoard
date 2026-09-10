@@ -76,7 +76,7 @@ Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache
 
 PluginStateStore 以 NSLock 保护的内存缓存加磁盘文件实现两级缓存。文件名由 stateID 清理不安全字符后生成；先原子写盘成功再更新内存。磁盘文件被删除时，已有内存缓存仍可命中。`needsRefresh` 按 updatedAt 判断过期，间隔下限为 5 秒；Store 自身调度使用快照和 nextRefreshAt。
 
-`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
+`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。`PluginSnapshot.isVisibleOnDashboard` 隐藏无内容的成功快照；loading 且已有 updatedAt 的空快照继续隐藏，首次加载和失败仍显示。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
 
 ## 4. Store 生命周期与数据流
 
@@ -123,6 +123,8 @@ Store.refresh(pluginID:force:)
 - stdout 最多 8 MiB；stderr 保留前 64 KiB 并持续排空，避免管道阻塞。
 - 环境设置 UTF-8，并以 `PYTHONDONTWRITEBYTECODE=1` 禁止写入 Python 字节码。
 - 非零退出码先作为错误处理，优先展示 stderr；退出码 0 时先识别非空顶层 error，再解码成功对象。
+
+Codex 在用量与本地统计完成后查询可选重置卡：最多额外等待 2 秒，且不超过 main 开始后的 12 秒截止时间；已无预算则跳过。请求在 daemon 线程执行，以限制包含 DNS 和响应读取在内的整体等待，超时省略 credits 并正常输出主数据。
 
 `PluginMetadataParser` 读取 UTF-8 文件，仅扫描前 80 行。`UsageBoardPlugin:` 和结束标记 `/UsageBoardPlugin` 及整个 JSON 注释块都必须在此范围内。无效或未闭合的块不产生 metadata。
 

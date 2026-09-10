@@ -3,8 +3,10 @@
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from datetime import date, datetime, time, timedelta
 from io import StringIO
@@ -191,6 +193,51 @@ class TestParseResetCredits(unittest.TestCase):
         self.assertEqual(plugin.parse_reset_credits({}), [])
         self.assertEqual(plugin.parse_reset_credits({"credits": "nope"}), [])
         self.assertEqual(plugin.parse_reset_credits({"credits": [None, 42]}), [])
+
+
+class TestResetCreditsDeadline(unittest.TestCase):
+    def test_exhausted_budget_skips_request(self):
+        with patch.object(plugin, "fetch_reset_credits") as fetch:
+            self.assertIsNone(plugin.best_effort_reset_credits("t", "a", plugin.monotonic() - 1))
+        fetch.assert_not_called()
+
+    def test_remaining_budget_caps_request_timeout(self):
+        payload = {"credits": [{"id": "c", "status": "available", "expires_at": "2027-01-01T00:00:00Z"}]}
+        with patch.object(plugin, "monotonic", return_value=10), \
+             patch.object(plugin, "fetch_reset_credits", return_value=payload) as fetch:
+            credits = plugin.best_effort_reset_credits("t", "a", deadline=10.5)
+        self.assertEqual(credits[0]["id"], "c")
+        fetch.assert_called_once_with("t", "a", timeout=0.5)
+
+    def test_slow_credit_response_does_not_hold_plugin_process_open(self):
+        # Ignore the socket timeout to model slow DNS/a trickling body. Run in a
+        # subprocess to ensure the abandoned worker cannot delay process exit.
+        code = textwrap.dedent('''
+            import importlib.util, io, json, sys, time
+            from pathlib import Path
+            from unittest.mock import patch
+            path = Path(sys.argv[1])
+            spec = importlib.util.spec_from_file_location("codex_probe", path)
+            plugin = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(plugin)
+            def urlopen(request, timeout):
+                if request.full_url == plugin.ENDPOINT:
+                    return io.BytesIO(json.dumps({"rate_limit": {"primary_window": {"used_percent": 10}}}).encode())
+                time.sleep(5)
+                raise TimeoutError("simulated slow response")
+            with patch.object(sys, "argv", ["codex", "--usageboard-param", "STAT_PERIOD=none"]), \
+                 patch.object(plugin, "load_auth", return_value={"access_token": "t", "account_id": "a"}), \
+                 patch.object(plugin, "CREDITS_TIMEOUT_SECONDS", 0.1), \
+                 patch.object(plugin.urllib.request, "urlopen", side_effect=urlopen):
+                sys.exit(plugin.main())
+        ''')
+        completed = subprocess.run(
+            [sys.executable, "-B", "-c", code, str(PLUGIN_PATH)],
+            capture_output=True, text=True, timeout=3, check=True,
+        )
+        output = json.loads(completed.stdout)
+        self.assertEqual(output["items"][0]["used"], 10)
+        self.assertNotIn("credits", output)
 
 
 class TestCollectSessionFiles(unittest.TestCase):
