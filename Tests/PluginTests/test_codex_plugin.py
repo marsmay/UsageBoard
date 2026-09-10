@@ -117,6 +117,43 @@ class TestBuildItems(unittest.TestCase):
         self.assertEqual(items[0]["used"], 0)
 
 
+class TestParseResetCredits(unittest.TestCase):
+    def test_keeps_only_available_credits_sorted_by_expiry(self):
+        payload = {
+            "available_count": 2,
+            "credits": [
+                {"id": "c-used", "status": "redeemed", "expires_at": "2026-07-01T00:00:00Z"},
+                {"id": "c-b", "status": "available", "expires_at": "2026-07-17T00:00:00Z"},
+                {"id": "c-a", "status": "available", "expires_at": "2026-07-10T00:00:00Z"},
+            ],
+        }
+
+        credits = plugin.parse_reset_credits(payload)
+
+        self.assertEqual([c["id"] for c in credits], ["c-a", "c-b"])
+        self.assertEqual(credits[0]["expiresAt"], "2026-07-10T00:00:00Z")
+
+    def test_drops_credits_without_parseable_expiry(self):
+        payload = {
+            "credits": [
+                {"id": "c-no-expiry", "status": "available"},
+                {"id": "c-bad-expiry", "status": "available", "expires_at": "not-a-date"},
+                {"status": "available", "expires_at": "2026-08-01T12:00:00+08:00"},
+            ],
+        }
+
+        credits = plugin.parse_reset_credits(payload)
+
+        self.assertEqual(len(credits), 1)
+        self.assertEqual(credits[0]["id"], "credit-2")
+        self.assertEqual(credits[0]["expiresAt"], "2026-08-01T04:00:00Z")
+
+    def test_missing_or_malformed_credits_field_yields_empty_list(self):
+        self.assertEqual(plugin.parse_reset_credits({}), [])
+        self.assertEqual(plugin.parse_reset_credits({"credits": "nope"}), [])
+        self.assertEqual(plugin.parse_reset_credits({"credits": [None, 42]}), [])
+
+
 class TestCollectSessionFiles(unittest.TestCase):
     """A session file is named after its start date, but entries written after
     local midnight belong to the next day. Incremental scans keyed by the next

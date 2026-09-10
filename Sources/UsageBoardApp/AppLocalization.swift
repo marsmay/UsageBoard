@@ -78,6 +78,24 @@ struct AppLocalization {
         }
     }
 
+    func resetCardsSummary(remaining: String) -> String {
+        language == .en ? "Next expiry · \(remaining)" : "最近到期 · \(remaining)"
+    }
+
+    func resetCardsAction(isExpanded: Bool) -> String {
+        if language == .en {
+            return isExpanded ? "Hide reset card details" : "Show reset card details"
+        }
+        return isExpanded ? "收起重置卡明细" : "展开重置卡明细"
+    }
+
+    func disclosureState(isExpanded: Bool) -> String {
+        if language == .en {
+            return isExpanded ? "Expanded" : "Collapsed"
+        }
+        return isExpanded ? "已展开" : "已收起"
+    }
+
     func text(_ key: Key) -> String {
         switch (key, language) {
         case (.discardChanges, .en): return "Discard Changes"
@@ -202,6 +220,8 @@ struct AppLocalization {
         case (.cancel, .zhHans): return "取消"
         case (.scriptPathNotFound, .en): return "Script file does not exist"
         case (.scriptPathNotFound, .zhHans): return "脚本文件不存在"
+        case (.resetCards, .en): return "Reset cards"
+        case (.resetCards, .zhHans): return "重置卡"
         }
     }
 
@@ -267,5 +287,6 @@ struct AppLocalization {
         case updateNow
         case cancel
         case scriptPathNotFound
+        case resetCards
     }
 }

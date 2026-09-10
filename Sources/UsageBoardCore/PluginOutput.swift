@@ -22,13 +22,102 @@ public struct PluginOutput: Decodable, Equatable, Sendable {
     public var badge: String?
     public var badgeColor: String?
     public var chart: PluginChart?
+    public var credits: [PluginResetCredit]?
 
-    public init(updatedAt: Date, items: [UsageItem], badge: String? = nil, badgeColor: String? = nil, chart: PluginChart? = nil) {
+    public init(updatedAt: Date, items: [UsageItem], badge: String? = nil, badgeColor: String? = nil, chart: PluginChart? = nil, credits: [PluginResetCredit]? = nil) {
         self.updatedAt = updatedAt
         self.items = items
         self.badge = badge
         self.badgeColor = badgeColor
         self.chart = chart
+        self.credits = credits
+    }
+}
+
+/// A banked quota-reset credit (e.g. Codex rate-limit reset cards).
+/// Plugins only report currently usable credits; redeemed/expired ones are filtered plugin-side.
+public struct PluginResetCredit: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var title: String?
+    public var expiresAt: Date?
+
+    public init(id: String, title: String? = nil, expiresAt: Date? = nil) {
+        self.id = id
+        self.title = title
+        self.expiresAt = expiresAt
+    }
+
+    /// Remaining validity bucket driving the status dot color.
+    public func urgency(now: Date = Date()) -> ResetCreditUrgency {
+        guard let expiresAt else { return .unknown }
+        let remaining = expiresAt.timeIntervalSince(now)
+        if remaining <= 0 { return .expired }
+        let days = remaining / 86_400
+        if days < 7 { return .soon }
+        if days < 14 { return .approaching }
+        return .fresh
+    }
+
+    public enum ResetCreditUrgency: String, Equatable, Sendable {
+        case fresh
+        case approaching
+        case soon
+        case expired
+        case unknown
+    }
+
+    /// Expiry timestamp reusing the same today/tomorrow rules as `UsageItem.resetText`.
+    public func expiryText(now: Date = Date(), language: AppLanguage = .zhHans) -> String {
+        guard let expiresAt else { return "--" }
+        let calendar = Calendar.current
+        let time = expiresAt.formatted(date: .omitted, time: .shortened)
+        if calendar.isDate(expiresAt, inSameDayAs: now) {
+            return language == .en ? "Today \(time)" : "今天 \(time)"
+        }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(expiresAt, inSameDayAs: tomorrow) {
+            return language == .en ? "Tomorrow \(time)" : "明天 \(time)"
+        }
+        let date = expiresAt.formatted(.dateTime.month(.defaultDigits).day(.defaultDigits))
+        return "\(date) \(time)"
+    }
+
+    /// Remaining validity: "剩余 22 天" / "22 days left", switching to hours under a day.
+    public func remainingText(now: Date = Date(), language: AppLanguage = .zhHans) -> String {
+        guard let expiresAt else { return "--" }
+        let remaining = expiresAt.timeIntervalSince(now)
+        if remaining <= 0 {
+            return language == .en ? "Expired" : "已过期"
+        }
+        let days = Int(remaining / 86_400)
+        if days >= 1 {
+            return language == .en ? "\(days)d left" : "剩余 \(days) 天"
+        }
+        let hours = max(Int(remaining / 3_600), 1)
+        return language == .en ? "\(hours)h left" : "剩余 \(hours) 小时"
+    }
+
+    /// "Expires Sep 21, 8:10 AM" / "9/21 8:10 到期" — the clause shown on the left of a credit row.
+    public func expiryClause(now: Date = Date(), language: AppLanguage = .zhHans) -> String {
+        let expiry = expiryText(now: now, language: language)
+        switch language {
+        case .en: return "Expires \(expiry)"
+        case .zhHans: return "\(expiry) 到期"
+        }
+    }
+
+    /// Bare "9/21 8:10" month/day + time for tight single-line card layouts.
+    public func compactExpiryText() -> String {
+        guard let expiresAt else { return "--" }
+        let date = expiresAt.formatted(.dateTime.month(.defaultDigits).day(.defaultDigits))
+        let time = expiresAt.formatted(date: .omitted, time: .shortened)
+        return "\(date) \(time)"
+    }
+
+    /// One-line summary shown in the dashboard: expiry plus remaining validity.
+    public func lineText(now: Date = Date(), language: AppLanguage = .zhHans) -> String {
+        let line = "\(expiryClause(now: now, language: language)) · \(remainingText(now: now, language: language))"
+        guard let title, !title.isEmpty else { return line }
+        return "\(title) · \(line)"
     }
 }
 

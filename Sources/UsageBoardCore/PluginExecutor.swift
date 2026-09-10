@@ -149,7 +149,8 @@ public struct PluginExecutor: Sendable {
                 badge: pluginOutput.badge,
                 badgeColor: pluginOutput.badgeColor,
                 iconURL: configuration.metadata?.icon,
-                chart: pluginOutput.chart
+                chart: pluginOutput.chart,
+                credits: pluginOutput.credits ?? []
             )
         } catch {
             return failed(configuration: configuration, displayName: displayName, message: "\(text(.jsonParseFailed, language: language))\(decodeErrorDescription(error))")

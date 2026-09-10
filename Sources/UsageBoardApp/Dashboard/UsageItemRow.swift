@@ -30,6 +30,138 @@ struct UsageItemRow: View {
     }
 }
 
+struct ResetCreditsSection: View {
+    var credits: [PluginResetCredit]
+    var language: AppLanguage
+    @Binding var isExpanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var strings: AppLocalization { AppLocalization(language: language) }
+    private var sortedCredits: [PluginResetCredit] {
+        credits.sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "ticket")
+                        .accessibilityHidden(true)
+                    Text("\(strings.text(.resetCards)) ×\(credits.count)")
+                        .layoutPriority(1)
+                    Spacer(minLength: 4)
+                    if let credit = sortedCredits.first, credit.expiresAt != nil {
+                        Text(strings.resetCardsSummary(remaining: credit.remainingText(language: language)))
+                            .foregroundStyle(credit.urgency().foregroundColor(in: colorScheme))
+                            .monospacedDigit()
+                    }
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 10)
+                        .accessibilityHidden(true)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(minHeight: 24)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(strings.resetCardsAction(isExpanded: isExpanded))
+            .accessibilityValue(strings.disclosureState(isExpanded: isExpanded))
+
+            if isExpanded {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())], spacing: 8) {
+                    ForEach(sortedCredits) { credit in
+                        ResetCreditCard(credit: credit, language: language)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+}
+
+struct ResetCreditCard: View {
+    var credit: PluginResetCredit
+    var language: AppLanguage
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var urgency: PluginResetCredit.ResetCreditUrgency { credit.urgency() }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(urgency.accentColor)
+                .frame(width: 5, height: 5)
+            if let title = credit.title, !title.isEmpty {
+                Text(title)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Text(credit.remainingText(language: language))
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(urgency.foregroundColor(in: colorScheme))
+                .lineLimit(1)
+                .fixedSize()
+            Spacer(minLength: 2)
+            Text(credit.compactExpiryText())
+                .font(.system(size: 10))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [urgency.accentColor.opacity(0.14), urgency.accentColor.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(urgency.accentColor.opacity(0.28), lineWidth: 0.5)
+        )
+        .help(credit.lineText(language: language))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(credit.lineText(language: language))
+    }
+}
+
+private extension PluginResetCredit.ResetCreditUrgency {
+    /// 装饰色（圆点 / 渐变底 / 描边）：可用卡也给绿色点缀，避免整组灰底。
+    var accentColor: Color {
+        switch self {
+        case .fresh: return .green
+        case .approaching: return .orange
+        case .soon: return .red
+        case .expired, .unknown: return .gray
+        }
+    }
+
+    func foregroundColor(in scheme: ColorScheme) -> Color {
+        switch self {
+        case .fresh, .expired, .unknown: return .secondary
+        case .approaching: return scheme == .dark ? .orange : Color(red: 0.58, green: 0.30, blue: 0.02)
+        case .soon: return scheme == .dark ? .red : Color(red: 0.70, green: 0.13, blue: 0.10)
+        }
+    }
+}
+
 struct UsageProgressBar: View {
     var value: Double
     var label: String

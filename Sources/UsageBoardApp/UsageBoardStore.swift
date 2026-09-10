@@ -253,7 +253,8 @@ final class UsageBoardStore: ObservableObject {
             state: .loading,
             items: snapshots[plugin.id]?.items ?? [],
             updatedAt: snapshots[plugin.id]?.updatedAt,
-            chart: snapshots[plugin.id]?.chart
+            chart: snapshots[plugin.id]?.chart,
+            credits: snapshots[plugin.id]?.credits ?? []
         )
         refresh(pluginID: id, force: true)
         startSchedulers()
@@ -325,7 +326,8 @@ final class UsageBoardStore: ObservableObject {
             updatedAt: snapshots[plugin.id]?.updatedAt,
             badge: snapshots[plugin.id]?.badge,
             badgeColor: snapshots[plugin.id]?.badgeColor,
-            chart: snapshots[plugin.id]?.chart
+            chart: snapshots[plugin.id]?.chart,
+            credits: snapshots[plugin.id]?.credits ?? []
         )
 
         let executor = executor
@@ -359,7 +361,8 @@ final class UsageBoardStore: ObservableObject {
             self.snapshots[pluginID] = self.makeSnapshot(
                 for: current, state: snapshot.state, items: snapshot.items,
                 updatedAt: snapshot.updatedAt, badge: snapshot.badge,
-                badgeColor: snapshot.badgeColor, chart: snapshot.chart
+                badgeColor: snapshot.badgeColor, chart: snapshot.chart,
+                credits: snapshot.credits
             )
             if snapshot.state == .ready, let updatedAt = snapshot.updatedAt {
                 let cached = PluginCachedState(
@@ -367,7 +370,8 @@ final class UsageBoardStore: ObservableObject {
                     items: snapshot.items,
                     badge: snapshot.badge,
                     badgeColor: snapshot.badgeColor,
-                    chart: snapshot.chart
+                    chart: snapshot.chart,
+                    credits: snapshot.credits
                 )
                 let stateID = current.stateID
                 await Task.detached(priority: .utility) {
@@ -477,7 +481,8 @@ final class UsageBoardStore: ObservableObject {
             next[plugin.id] = makeSnapshot(
                 for: plugin, state: old?.state ?? .idle, items: old?.items ?? [],
                 updatedAt: old?.updatedAt, badge: old?.badge,
-                badgeColor: old?.badgeColor, chart: old?.chart
+                badgeColor: old?.badgeColor, chart: old?.chart,
+                credits: old?.credits ?? []
             )
         }
         snapshots = next
@@ -493,7 +498,8 @@ final class UsageBoardStore: ObservableObject {
                 updatedAt: cached.updatedAt,
                 badge: cached.badge,
                 badgeColor: cached.badgeColor,
-                chart: cached.chart
+                chart: cached.chart,
+                credits: cached.credits ?? []
             )
         }
     }
@@ -660,7 +666,8 @@ final class UsageBoardStore: ObservableObject {
         updatedAt: Date? = nil,
         badge: String? = nil,
         badgeColor: String? = nil,
-        chart: PluginChart? = nil
+        chart: PluginChart? = nil,
+        credits: [PluginResetCredit] = []
     ) -> PluginSnapshot {
         PluginSnapshot(
             id: plugin.id,
@@ -671,7 +678,8 @@ final class UsageBoardStore: ObservableObject {
             badge: badge,
             badgeColor: badgeColor,
             iconURL: plugin.metadata?.icon,
-            chart: chart
+            chart: chart,
+            credits: credits
         )
     }
 

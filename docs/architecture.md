@@ -65,7 +65,7 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | --- | --- |
 | `config.json` | 插件配置与参数。ConfigStore 同目录创建权限 0600 的临时文件，写入后用 rename 原子替换 |
 | `plugins/` | 内置插件符号链接和用户脚本；添加插件的文件选择器默认打开这里 |
-| `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart |
+| `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
 Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。
@@ -76,7 +76,7 @@ Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache
 
 PluginStateStore 以 NSLock 保护的内存缓存加磁盘文件实现两级缓存。文件名由 stateID 清理不安全字符后生成；先原子写盘成功再更新内存。磁盘文件被删除时，已有内存缓存仍可命中。`needsRefresh` 按 updatedAt 判断过期，间隔下限为 5 秒；Store 自身调度使用快照和 nextRefreshAt。
 
-`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart 可选。
+`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
 
 ## 4. Store 生命周期与数据流
 
@@ -153,7 +153,7 @@ App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSSt
 
 - 设置窗口初始 800×520，最小 800×480。
 - popover 固定宽 380，高度随内容缩放，上限为状态栏所在屏幕可用高度的 75%。OverviewView 使用纵向 fixedSize 支持收缩，MeasuredScrollView 按扣除标题等区域后的预算滚动。
-- DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。
+- DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。重置卡默认收起为数量与最近到期摘要，整行点击展开按到期时间排序的两列卡片明细（每排两张，奇数张时最后一张左对齐）；常态使用次级文字色，临近到期才着色。
 - UsageProgressBar 显式 color 优先；未指定或无法识别时，按进度 <60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红。status 不决定颜色。文字按已填充区域遮罩切色，黄/橙/绿底用黑字，蓝/红底用白字。
 - PlanTag 显示大写套餐名，前景色配同色淡背景；badgeColor 优先，否则按 PRO/PLUS/TEAM/FREE/MAX 等预设匹配。
 

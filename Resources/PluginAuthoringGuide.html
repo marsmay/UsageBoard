@@ -272,6 +272,13 @@ api_key = params.get("API_KEY", "")</code></pre>
     }
   ],
   "badge": "PRO",
+  "credits": [
+    {
+      "id": "RateLimitResetCredit_abc",
+      "title": "周重置卡",
+      "expiresAt": "2026-07-17T00:00:00Z"
+    }
+  ],
   "chart": {
     "kind": "line",
     "period": "30d",
@@ -336,6 +343,31 @@ api_key = params.get("API_KEY", "")</code></pre>
 
   <h3>可选徽章字段</h3>
   <p><code>badge</code> 是卡片标题旁的大写套餐名；<code>badgeColor</code> 支持 blue、orange、gray（或 grey）、indigo、purple、teal、green、red、yellow，显示同色文字和淡背景。未指定或无法识别时按 PRO、PLUS、TEAM、FREE、MAX 等套餐预设匹配。</p>
+
+  <h3>可选重置卡字段</h3>
+  <p>顶层 <code>credits</code> 数组用于在用量项目下方展示可囤用的配额重置卡（如 Codex 的 rate-limit reset）。只应包含当前可用的卡，已使用或已过期的卡由插件侧过滤；查询失败时应直接省略该字段，不影响其他数据。重置卡区块默认收起为一行（数量和最近到期摘要），点击展开为按到期时间排序的两列卡片；每张卡显示剩余天数和到期时间，卡片底色与圆点按剩余有效期着色（14 天以上绿、7 至 14 天橙、7 天以内红、已过期或无到期时间灰）。</p>
+  <table>
+    <thead>
+      <tr>
+        <th>字段</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>id</code></td>
+        <td>重置卡稳定 ID。</td>
+      </tr>
+      <tr>
+        <td><code>title</code></td>
+        <td>可选。卡类型名称（如"周重置卡"），用于区分同插件的不同卡种；所有卡同类时省略。</td>
+      </tr>
+      <tr>
+        <td><code>expiresAt</code></td>
+        <td>ISO 8601 到期时间。缺失时界面显示 <code>--</code>。</td>
+      </tr>
+    </tbody>
+  </table>
 
   <h3>可选图表字段</h3>
   <p>顶层 <code>chart</code> 字段用于在插件卡片底部展示 token 统计图。使用 <code>kind: "line"</code> 数据结构，实际折线/堆叠直方图由通用设置的 <code>chartMode</code> 决定；每个 <code>bucket</code> 是一个时间点，每个 <code>segment</code> 是一个模型序列值。</p>

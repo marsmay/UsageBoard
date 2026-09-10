@@ -203,6 +203,80 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertNotNil(item.resetAt)
     }
 
+    func testPluginOutputDecodesResetCredits() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "updatedAt": "2026-06-20T00:00:00Z",
+          "items": [],
+          "credits": [
+            {"id": "c-a", "expiresAt": "2026-07-10T06:00:00Z"},
+            {"id": "c-b", "title": "周重置卡", "expiresAt": "2026-07-17T06:00:00Z"}
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let output = try UsageBoardJSON.decoder().decode(PluginOutput.self, from: json)
+        let credits = try XCTUnwrap(output.credits)
+        XCTAssertEqual(credits.count, 2)
+        XCTAssertEqual(credits[0].id, "c-a")
+        XCTAssertNil(credits[0].title)
+        XCTAssertEqual(credits[1].title, "周重置卡")
+        XCTAssertNotNil(credits[0].expiresAt)
+    }
+
+    func testPluginOutputWithoutCreditsStillDecodes() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "updatedAt": "2026-06-20T00:00:00Z",
+          "items": []
+        }
+        """.data(using: .utf8)!
+
+        let output = try UsageBoardJSON.decoder().decode(PluginOutput.self, from: json)
+        XCTAssertNil(output.credits)
+    }
+
+    func testResetCreditUrgencyThresholds() {
+        let now = ISO8601DateFormatter().date(from: "2026-06-20T00:00:00Z")!
+        func credit(afterDays days: Double) -> PluginResetCredit {
+            PluginResetCredit(id: "c", expiresAt: now.addingTimeInterval(days * 86_400))
+        }
+
+        XCTAssertEqual(credit(afterDays: 20).urgency(now: now), .fresh)
+        XCTAssertEqual(credit(afterDays: 10).urgency(now: now), .approaching)
+        XCTAssertEqual(credit(afterDays: 3).urgency(now: now), .soon)
+        XCTAssertEqual(credit(afterDays: -1).urgency(now: now), .expired)
+        XCTAssertEqual(PluginResetCredit(id: "c").urgency(now: now), .unknown)
+    }
+
+    func testResetCreditLineTextIncludesExpiryAndRemaining() {
+        let now = ISO8601DateFormatter().date(from: "2026-06-20T00:00:00Z")!
+        let expires = now.addingTimeInterval(22 * 86_400)
+        let credit = PluginResetCredit(id: "c", expiresAt: expires)
+
+        let zh = credit.lineText(now: now, language: .zhHans)
+        XCTAssertTrue(zh.contains("到期"))
+        XCTAssertTrue(zh.contains("剩余 22 天"))
+
+        let en = credit.lineText(now: now, language: .en)
+        XCTAssertTrue(en.hasPrefix("Expires "))
+        XCTAssertTrue(en.contains("22d left"))
+
+        let titled = PluginResetCredit(id: "c", title: "周重置卡", expiresAt: expires)
+        XCTAssertTrue(titled.lineText(now: now, language: .zhHans).hasPrefix("周重置卡 · "))
+
+        let expired = PluginResetCredit(id: "c", expiresAt: now.addingTimeInterval(-3600))
+        XCTAssertTrue(expired.lineText(now: now, language: .zhHans).contains("已过期"))
+
+        let hoursLeft = PluginResetCredit(id: "c", expiresAt: now.addingTimeInterval(5 * 3600))
+        XCTAssertTrue(hoursLeft.lineText(now: now, language: .zhHans).contains("剩余 5 小时"))
+
+        XCTAssertTrue(hoursLeft.compactExpiryText().contains("/"))
+        XCTAssertEqual(PluginResetCredit(id: "c").compactExpiryText(), "--")
+    }
+
     func testPluginOutputDecodesChartAndCachesIt() throws {
         let json = """
         {

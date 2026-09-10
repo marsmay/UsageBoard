@@ -8,6 +8,7 @@ struct PluginGroupView: View {
     var nextRefreshAt: Date?
     var onRefresh: (() -> Void)?
     @State private var isChartExpanded = false
+    @State private var isCreditsExpanded = false
     private var strings: AppLocalization {
         .shared
     }
@@ -32,17 +33,25 @@ struct PluginGroupView: View {
                             .textSelection(.enabled)
                     }
                     .padding(.vertical, 8)
-                } else if snapshot.items.isEmpty && snapshot.chart == nil {
+                } else if snapshot.items.isEmpty && snapshot.chart == nil && snapshot.credits.isEmpty {
                     Text(strings.text(.noUsageData))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 18)
-                } else if !snapshot.items.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(snapshot.items) { item in
-                            UsageItemRow(item: item, language: language)
+                } else {
+                    if !snapshot.items.isEmpty {
+                        VStack(spacing: 8) {
+                            ForEach(snapshot.items) { item in
+                                UsageItemRow(item: item, language: language)
+                            }
                         }
+                    }
+                    if !snapshot.credits.isEmpty {
+                        if !snapshot.items.isEmpty {
+                            Divider()
+                        }
+                        creditsSection
                     }
                 }
             }
@@ -96,6 +105,10 @@ struct PluginGroupView: View {
                 .stroke(UB.Canvas.separator.opacity(0.7), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.02), radius: 1, y: 1)
+    }
+
+    private var creditsSection: some View {
+        ResetCreditsSection(credits: snapshot.credits, language: language, isExpanded: $isCreditsExpanded)
     }
 
     private var header: some View {

@@ -87,6 +87,7 @@ from _common import (  # noqa: E402
 
 
 ENDPOINT = "https://chatgpt.com/backend-api/wham/usage"
+CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 CACHE_VERSION = 1
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 
@@ -141,6 +142,52 @@ def fetch_usage(access_token: str, account_id: str) -> dict[str, Any]:
     request = urllib.request.Request(ENDPOINT, headers=headers)
     with urllib.request.urlopen(request, timeout=15) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_reset_credits(access_token: str, account_id: str) -> dict[str, Any]:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "ChatGPT-Account-Id": account_id,
+        "OpenAI-Beta": "codex-1",
+        "originator": "Codex Desktop",
+        "Origin": "https://chatgpt.com",
+        "Referer": "https://chatgpt.com/",
+        "User-Agent": "Mozilla/5.0",
+    }
+    request = urllib.request.Request(CREDITS_ENDPOINT, headers=headers)
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def iso_or_none(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_reset_credits(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    credits = payload.get("credits")
+    if not isinstance(credits, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for index, credit in enumerate(credits):
+        if not isinstance(credit, dict) or credit.get("status") != "available":
+            continue
+        expires_at = iso_or_none(credit.get("expires_at") or credit.get("expiresAt"))
+        if expires_at is None:
+            continue
+        credit_id = credit.get("id")
+        result.append({
+            "id": credit_id if isinstance(credit_id, str) and credit_id else f"credit-{index}",
+            "expiresAt": expires_at,
+        })
+    result.sort(key=lambda entry: entry["expiresAt"])
+    return result
 
 
 def epoch_ms_to_iso(value: Any) -> str | None:
@@ -602,6 +649,14 @@ def main() -> int:
     except Exception:
         return failure(translate(language, "usage_parse_failed"))
 
+    # Reset credits are best-effort: any failure leaves them out without
+    # affecting quota display.
+    credits: list[dict[str, Any]] | None = None
+    try:
+        credits = parse_reset_credits(fetch_reset_credits(access_token, account_id)) or None
+    except Exception:
+        credits = None
+
     chart = None
     if enable_stats:
         try:
@@ -613,7 +668,7 @@ def main() -> int:
 
     if not items:
         return failure(translate(language, "no_quota_data"))
-    return success(items, badge=badge, chart=chart)
+    return success(items, badge=badge, chart=chart, credits=credits)
 
 
 if __name__ == "__main__":

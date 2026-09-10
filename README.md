@@ -318,7 +318,7 @@ UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOA
 - `chart.message`：可选提示文案，统计数据为空或不可用时显示。
 - `error`：可选顶层错误信息；存在且非空时，该插件本次运行会被视为失败，错误文本显示在卡片内容区。
 
-内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过独立的 `AUTH_FILE` 参数读取认证文件（默认 `~/.codex/auth.json`），通过 `DATA_DIR` 指定会话统计目录（默认 `~/.codex`），`ENABLE_STATS` 控制是否统计。修改统计目录不会自动改变认证文件路径。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中；每次运行重扫最后一个已缓存日及之后的数据。Claude、Codex 与智谱共享原子缓存读写，写入失败时保留之前的完整缓存。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
+内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `7d`、`15d`、`30d`。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过独立的 `AUTH_FILE` 参数读取认证文件（默认 `~/.codex/auth.json`），通过 `DATA_DIR` 指定会话统计目录（默认 `~/.codex`），`ENABLE_STATS` 控制是否统计。修改统计目录不会自动改变认证文件路径。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中；每次运行重扫最后一个已缓存日及之后的数据。Claude、Codex 与智谱共享原子缓存读写，写入失败时保留之前的完整缓存。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Codex 插件还会列出账号当前可用的额度重置卡，默认以单行显示数量和最近到期信息，点击展开后以每排两张的卡片查看到期时间和剩余天数，查询失败时不影响用量显示。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
 
 ## 安装
 
