@@ -27,6 +27,7 @@
 #       "required": true,
 #       "defaultValue": "7d",
 #       "options": [
+#         {"label": "无",    "label@zh-Hans": "无",    "label@en": "None",     "value": "none"},
 #         {"label": "7 天",  "label@zh-Hans": "7 天",  "label@en": "7 days",  "value": "7d"},
 #         {"label": "15 天", "label@zh-Hans": "15 天", "label@en": "15 days", "value": "15d"},
 #         {"label": "30 天", "label@zh-Hans": "30 天", "label@en": "30 days", "value": "30d"}
@@ -781,7 +782,7 @@ def main() -> int:
     params = parse_usageboard_params(sys.argv[1:])
     api_key = params.get("API_KEY")
     period = params.get("STAT_PERIOD", "7d").lower()
-    if period not in ("7d", "15d", "30d"):
+    if period not in ("none", "7d", "15d", "30d"):
         period = "7d"
     language = app_language(params)
     translate = make_translator(TRANSLATIONS)
@@ -810,12 +811,14 @@ def main() -> int:
     if not items:
         return failure(translate(language, "no_quota_items"))
 
-    _, _, buckets, bucket_unit = stat_range(period)
-    try:
-        daily = maintain_chart_cache(api_key, language)
-        chart = build_chart_from_cache(daily, period, language)
-    except Exception:
-        chart = chart_message(translate(language, "stats_query_failed"), period, buckets, bucket_unit)
+    chart = None
+    if period != "none":
+        _, _, buckets, bucket_unit = stat_range(period)
+        try:
+            daily = maintain_chart_cache(api_key, language)
+            chart = build_chart_from_cache(daily, period, language)
+        except Exception:
+            chart = chart_message(translate(language, "stats_query_failed"), period, buckets, bucket_unit)
     return success(items, badge=badge, chart=chart)
 
 

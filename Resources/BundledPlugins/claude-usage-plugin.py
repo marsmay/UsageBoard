@@ -25,6 +25,16 @@
 #       ]
 #     },
 #     {
+#       "name": "DATA_DIR",
+#       "label": "Data Directory",
+#       "label@zh-Hans": "数据目录",
+#       "label@en": "Data Directory",
+#       "type": "directory",
+#       "required": false,
+#       "defaultValue": "~/.claude",
+#       "placeholder": "~/.claude"
+#     },
+#     {
 #       "name": "STAT_PERIOD",
 #       "label": "Stats Period",
 #       "label@zh-Hans": "统计周期",
@@ -33,6 +43,7 @@
 #       "required": false,
 #       "defaultValue": "7d",
 #       "options": [
+#         {"label": "None",    "label@zh-Hans": "无",      "label@en": "None",     "value": "none"},
 #         {"label": "7 days",  "label@zh-Hans": "7 天",  "label@en": "7 days",  "value": "7d"},
 #         {"label": "15 days", "label@zh-Hans": "15 天", "label@en": "15 days", "value": "15d"},
 #         {"label": "30 days", "label@zh-Hans": "30 天", "label@en": "30 days", "value": "30d"}
@@ -46,16 +57,6 @@
 #       "type": "boolean",
 #       "required": false,
 #       "defaultValue": "false"
-#     },
-#     {
-#       "name": "DATA_DIR",
-#       "label": "Data Directory",
-#       "label@zh-Hans": "数据目录",
-#       "label@en": "Data Directory",
-#       "type": "directory",
-#       "required": false,
-#       "defaultValue": "~/.claude",
-#       "placeholder": "~/.claude"
 #     }
 #   ]
 # }
@@ -421,13 +422,16 @@ def main():
     translate = _translate(lang)
     data_dir = os.path.realpath(os.path.expanduser(params.get("DATA_DIR", "~/.claude")))
     plan = params.get("PLAN", "pro").lower()
+    stat_period = params.get("STAT_PERIOD", "7d").lower()
+    stats_enabled = stat_period != "none"
 
-    if not os.path.isdir(os.path.expanduser(data_dir)):
-        failure(translate(lang, "no_data_dir"))
-        return
-
-    daily = maintain_cache(data_dir)
-    chart = build_chart(params, daily, lang, translate)
+    chart = None
+    if stats_enabled:
+        if not os.path.isdir(os.path.expanduser(data_dir)):
+            failure(translate(lang, "no_data_dir"))
+            return
+        daily = maintain_cache(data_dir)
+        chart = build_chart(params, daily, lang, translate)
 
     if plan == "none":
         success([], chart=chart)

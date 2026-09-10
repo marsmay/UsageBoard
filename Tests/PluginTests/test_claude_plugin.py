@@ -27,6 +27,40 @@ def load_plugin():
 plugin = load_plugin()
 
 
+class TestPlanAndStatsNone(unittest.TestCase):
+    def _run_main(self, params, isdir=True, cache_return=None, cache_side_effect=None):
+        argv = ["claude"]
+        for key, value in params:
+            argv += ["--usageboard-param", f"{key}={value}"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(plugin.os.path, "isdir", return_value=isdir), \
+             patch.object(plugin, "maintain_cache", side_effect=cache_side_effect, return_value=cache_return) as cache_mock, \
+             patch("sys.stdout", new_callable=StringIO) as out:
+            plugin.main()
+        return json.loads(out.getvalue()), cache_mock
+
+    def test_plan_and_stats_none_returns_no_content(self):
+        output, cache_mock = self._run_main(
+            [("PLAN", "none"), ("STAT_PERIOD", "none")],
+            isdir=False,  # data dir is not required when stats are off
+            cache_side_effect=AssertionError("should not scan"),
+        )
+
+        self.assertEqual(output["items"], [])
+        self.assertNotIn("chart", output)
+        cache_mock.assert_not_called()
+
+    def test_plan_none_with_stats_keeps_chart_only(self):
+        output, cache_mock = self._run_main(
+            [("PLAN", "none"), ("STAT_PERIOD", "7d")],
+            cache_return={},
+        )
+
+        self.assertEqual(output["items"], [])
+        self.assertIn("chart", output)
+        cache_mock.assert_called_once()
+
+
 class TestTranslateSignature(unittest.TestCase):
     """translate(language, key) — language first, key second (matches all other plugins)."""
 

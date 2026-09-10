@@ -44,6 +44,15 @@ public struct PluginSnapshot: Equatable, Identifiable, Sendable {
     }
 }
 
+public extension PluginSnapshot {
+    /// Whether the snapshot carries anything worth rendering. Ready snapshots
+    /// with no items, chart or credits (e.g. all data sources disabled via
+    /// parameters) are hidden from the dashboard instead of showing an empty card.
+    var hasVisibleContent: Bool {
+        !items.isEmpty || chart != nil || !credits.isEmpty
+    }
+}
+
 public struct PluginCachedState: Codable, Equatable, Sendable {
     public var updatedAt: Date
     public var items: [UsageItem]

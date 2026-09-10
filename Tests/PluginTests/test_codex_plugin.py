@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from datetime import date, datetime, time, timedelta
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -115,6 +116,44 @@ class TestBuildItems(unittest.TestCase):
         self.assertEqual([item["id"] for item in items], ["codex-weekly"])
         self.assertEqual(items[0]["name"], "周用量")
         self.assertEqual(items[0]["used"], 0)
+
+
+class TestStatsPeriodNone(unittest.TestCase):
+    USAGE_PAYLOAD = {
+        "plan_type": "pro",
+        "rate_limit": {"primary_window": {"used_percent": 10, "reset_time_ms": 1780000000000}},
+    }
+
+    def _run_main(self, extra_params, cache_side_effect=None, cache_return=None):
+        argv = ["codex"]
+        for key, value in extra_params:
+            argv += ["--usageboard-param", f"{key}={value}"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(plugin, "load_auth", return_value={"tokens": {"access_token": "t", "account_id": "a"}}), \
+             patch.object(plugin, "fetch_usage", return_value=self.USAGE_PAYLOAD), \
+             patch.object(plugin, "fetch_reset_credits", side_effect=RuntimeError("boom")), \
+             patch.object(plugin, "maintain_chart_cache", side_effect=cache_side_effect, return_value=cache_return) as cache_mock, \
+             patch("sys.stdout", new_callable=StringIO) as out:
+            code = plugin.main()
+        return code, json.loads(out.getvalue()), cache_mock
+
+    def test_none_period_skips_stats_and_omits_chart(self):
+        code, output, cache_mock = self._run_main(
+            [("STAT_PERIOD", "none")],
+            cache_side_effect=AssertionError("should not scan"),
+        )
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("chart", output)
+        self.assertEqual(len(output["items"]), 1)
+        cache_mock.assert_not_called()
+
+    def test_default_period_still_builds_chart(self):
+        code, output, cache_mock = self._run_main([], cache_return={})
+
+        self.assertEqual(code, 0)
+        self.assertIn("chart", output)
+        cache_mock.assert_called_once()
 
 
 class TestParseResetCredits(unittest.TestCase):

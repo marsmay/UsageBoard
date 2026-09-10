@@ -1,10 +1,12 @@
 """Tests for glm-usage-plugin.py — run with: python3 -m pytest Tests/PluginTests/test_glm_plugin.py"""
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
 from datetime import timedelta
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +24,46 @@ def load_plugin():
 
 
 plugin = load_plugin()
+
+
+class TestStatsPeriodNone(unittest.TestCase):
+    LIMITS_PAYLOAD = {
+        "data": {
+            "level": "pro",
+            "limits": [{"unit": 3, "number": 5, "percentage": 42, "nextResetTime": 1780000000000}],
+        }
+    }
+
+    def _run_main(self, period, cache_side_effect=None, cache_return=None):
+        argv = [
+            "glm",
+            "--usageboard-param", "API_KEY=test-key",
+            "--usageboard-param", f"STAT_PERIOD={period}",
+        ]
+        with patch.object(sys, "argv", argv), \
+             patch.object(plugin, "fetch_limits", return_value=self.LIMITS_PAYLOAD), \
+             patch.object(plugin, "maintain_chart_cache", side_effect=cache_side_effect, return_value=cache_return) as cache_mock, \
+             patch("sys.stdout", new_callable=StringIO) as out:
+            code = plugin.main()
+        return code, json.loads(out.getvalue()), cache_mock
+
+    def test_none_period_omits_chart_and_skips_stats_query(self):
+        code, output, cache_mock = self._run_main(
+            "none",
+            cache_side_effect=AssertionError("should not query stats"),
+        )
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("chart", output)
+        self.assertEqual(len(output["items"]), 1)
+        cache_mock.assert_not_called()
+
+    def test_default_period_still_builds_chart(self):
+        code, output, cache_mock = self._run_main("7d", cache_return={})
+
+        self.assertEqual(code, 0)
+        self.assertIn("chart", output)
+        cache_mock.assert_called_once()
 
 
 class TestQuotaKind(unittest.TestCase):

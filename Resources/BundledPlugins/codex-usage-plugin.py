@@ -11,16 +11,6 @@
 #   "description@en": "Query OpenAI Codex CLI usage and stats",
 #   "parameters": [
 #     {
-#       "name": "AUTH_FILE",
-#       "label": "认证文件",
-#       "label@zh-Hans": "认证文件",
-#       "label@en": "Auth File",
-#       "type": "file",
-#       "required": false,
-#       "defaultValue": "~/.codex/auth.json",
-#       "placeholder": "~/.codex/auth.json"
-#     },
-#     {
 #       "name": "DATA_DIR",
 #       "label": "数据目录",
 #       "label@zh-Hans": "数据目录",
@@ -31,13 +21,14 @@
 #       "placeholder": "~/.codex"
 #     },
 #     {
-#       "name": "ENABLE_STATS",
-#       "label": "统计",
-#       "label@zh-Hans": "统计",
-#       "label@en": "Statistics",
-#       "type": "boolean",
+#       "name": "AUTH_FILE",
+#       "label": "认证文件",
+#       "label@zh-Hans": "认证文件",
+#       "label@en": "Auth File",
+#       "type": "file",
 #       "required": false,
-#       "defaultValue": "true"
+#       "defaultValue": "~/.codex/auth.json",
+#       "placeholder": "~/.codex/auth.json"
 #     },
 #     {
 #       "name": "STAT_PERIOD",
@@ -48,6 +39,7 @@
 #       "required": false,
 #       "defaultValue": "7d",
 #       "options": [
+#         {"label": "无",    "label@zh-Hans": "无",    "label@en": "None",     "value": "none"},
 #         {"label": "7 天",  "label@zh-Hans": "7 天",  "label@en": "7 days",  "value": "7d"},
 #         {"label": "15 天", "label@zh-Hans": "15 天", "label@en": "15 days", "value": "15d"},
 #         {"label": "30 天", "label@zh-Hans": "30 天", "label@en": "30 days", "value": "30d"}
@@ -612,10 +604,10 @@ def main() -> int:
     language = app_language(params)
     auth_file = params.get("AUTH_FILE", "") or "~/.codex/auth.json"
     data_dir = os.path.realpath(os.path.expanduser(params.get("DATA_DIR", "") or "~/.codex"))
-    enable_stats = params.get("ENABLE_STATS", "true").lower() != "false"
     period = params.get("STAT_PERIOD", "7d").lower()
-    if period not in ("7d", "15d", "30d"):
+    if period not in ("none", "7d", "15d", "30d"):
         period = "7d"
+    enable_stats = period != "none"
 
     auth = load_auth(auth_file)
     if not auth:

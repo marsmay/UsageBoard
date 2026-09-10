@@ -7,11 +7,19 @@ struct DashboardView: View {
     var maximumHeight: CGFloat
 
     private var enabledPlugins: [PluginConfiguration] {
-        store.configuration.plugins.filter(\.enabled)
+        store.configuration.plugins.filter(\.enabled).filter { plugin in
+            let snapshot = store.snapshot(for: plugin)
+            // Hide cards whose plugin succeeded but produced nothing to show
+            // (e.g. Claude with both plan and stats period set to none).
+            if case .ready = snapshot.state {
+                return snapshot.hasVisibleContent
+            }
+            return true
+        }
     }
 
     private var enabledPluginIDs: [UUID] {
-        store.configuration.plugins.compactMap { $0.enabled ? $0.id : nil }
+        enabledPlugins.map(\.id)
     }
 
     private var strings: AppLocalization {

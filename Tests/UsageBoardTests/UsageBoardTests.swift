@@ -238,6 +238,22 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertNil(output.credits)
     }
 
+    func testSnapshotHasVisibleContent() {
+        XCTAssertFalse(PluginSnapshot(id: UUID(), displayName: "P", state: .ready).hasVisibleContent)
+        XCTAssertTrue(PluginSnapshot(
+            id: UUID(), displayName: "P", state: .ready,
+            items: [UsageItem(id: "a", name: "A", used: 1, limit: 2, displayStyle: .percent)]
+        ).hasVisibleContent)
+        XCTAssertTrue(PluginSnapshot(
+            id: UUID(), displayName: "P", state: .ready,
+            chart: PluginChart(period: "7d", bucketUnit: "day", buckets: [])
+        ).hasVisibleContent)
+        XCTAssertTrue(PluginSnapshot(
+            id: UUID(), displayName: "P", state: .ready,
+            credits: [PluginResetCredit(id: "c")]
+        ).hasVisibleContent)
+    }
+
     func testResetCreditUrgencyThresholds() {
         let now = ISO8601DateFormatter().date(from: "2026-06-20T00:00:00Z")!
         func credit(afterDays days: Double) -> PluginResetCredit {
@@ -457,7 +473,7 @@ final class UsageBoardTests: XCTestCase {
 
         let period = try XCTUnwrap(metadata.parameters.first(where: { $0.name == "STAT_PERIOD" }))
         XCTAssertEqual(period.defaultValue, "7d")
-        XCTAssertEqual(period.options.map(\.value), ["7d", "15d", "30d"])
+        XCTAssertEqual(period.options.map(\.value), ["none", "7d", "15d", "30d"])
     }
 
     func testClaudePluginMetadataDoesNotExposeCalculationMode() throws {
@@ -469,7 +485,7 @@ final class UsageBoardTests: XCTestCase {
         let pluginURL = root.appendingPathComponent("Resources/BundledPlugins/claude-usage-plugin.py")
 
         let metadata = try XCTUnwrap(PluginMetadataParser.parse(fileURL: pluginURL))
-        XCTAssertEqual(metadata.parameters.map(\.name), ["PLAN", "STAT_PERIOD", "CLAUDE_ONLY", "DATA_DIR"])
+        XCTAssertEqual(metadata.parameters.map(\.name), ["PLAN", "DATA_DIR", "STAT_PERIOD", "CLAUDE_ONLY"])
     }
 
     func testCodexPluginMetadataReadsParameters() throws {
@@ -482,11 +498,11 @@ final class UsageBoardTests: XCTestCase {
 
         let metadata = try XCTUnwrap(PluginMetadataParser.parse(fileURL: pluginURL))
         XCTAssertEqual(metadata.name, "Codex")
-        XCTAssertEqual(metadata.parameters.map(\.name), ["AUTH_FILE", "DATA_DIR", "ENABLE_STATS", "STAT_PERIOD"])
+        XCTAssertEqual(metadata.parameters.map(\.name), ["DATA_DIR", "AUTH_FILE", "STAT_PERIOD"])
 
-        let enableStats = try XCTUnwrap(metadata.parameters.first(where: { $0.name == "ENABLE_STATS" }))
-        XCTAssertEqual(enableStats.type, .boolean)
-        XCTAssertEqual(enableStats.defaultValue, "true")
+        let period = try XCTUnwrap(metadata.parameters.first(where: { $0.name == "STAT_PERIOD" }))
+        XCTAssertEqual(period.defaultValue, "7d")
+        XCTAssertEqual(period.options.map(\.value), ["none", "7d", "15d", "30d"])
     }
 
     func testDuplicatePluginNamesGetNumbered() {
