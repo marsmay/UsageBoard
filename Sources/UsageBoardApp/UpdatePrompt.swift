@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UsageBoardCore
 
@@ -8,9 +9,12 @@ import UsageBoardCore
 enum UpdatePrompt {
     @MainActor
     private static var currentPanel: NSPanel?
+    @MainActor
+    private static var updateSubscription: AnyCancellable?
 
     @MainActor
     static func present(info: UpdateInfo, store: UsageBoardStore) {
+        guard store.availableUpdate == info else { return }
         if let panel = currentPanel {
             panel.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -27,6 +31,7 @@ enum UpdatePrompt {
         // (e.g. AboutView.onChange) wedges the new panel's event handling —
         // it renders but never receives clicks.
         DispatchQueue.main.async {
+            guard !store.isUpdating, let info = store.availableUpdate else { return }
             presentPanel(info: info, currentVersion: currentVersion, store: store)
         }
     }
@@ -48,28 +53,32 @@ enum UpdatePrompt {
             panel.standardWindowButton(button)?.isHidden = true
         }
 
-        let view = UpdatePromptView(
-            store: store,
-            info: info,
-            currentVersion: currentVersion,
-            onLater: { [weak panel] in
-                store.dismissUpdate(version: info.latestVersion)
-                panel?.close()
-            }
-        )
-        let controller = NSHostingController(rootView: view)
-        panel.contentViewController = controller
-        panel.setContentSize(controller.sizeThatFits(in: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude)))
+        updateContent(of: panel, info: info, currentVersion: currentVersion, store: store)
         panel.center()
 
         // 浮在 popover（popUpMenu 层级）之上，非模态，不会被 modal 会话重置层级。
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
         currentPanel = panel
+        updateSubscription = store.$availableUpdate.removeDuplicates().dropFirst().sink { [weak panel] _ in
+            // Published emits before the property changes. Read the latest result
+            // next turn, and ignore callbacks belonging to a closed panel.
+            DispatchQueue.main.async {
+                guard let panel, currentPanel === panel else { return }
+                guard let info = store.availableUpdate else {
+                    panel.close()
+                    return
+                }
+                updateContent(of: panel, info: info, currentVersion: currentVersion, store: store)
+            }
+        }
         let observerBox = CloseObserverBox()
         observerBox.observer = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: panel, queue: .main
         ) { _ in
-            MainActor.assumeIsolated { currentPanel = nil }
+            MainActor.assumeIsolated {
+                currentPanel = nil
+                updateSubscription = nil
+            }
             if let observer = observerBox.observer {
                 NotificationCenter.default.removeObserver(observer)
                 observerBox.observer = nil
@@ -78,6 +87,30 @@ enum UpdatePrompt {
 
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private static func updateContent(of panel: NSPanel, info: UpdateInfo, currentVersion: String, store: UsageBoardStore) {
+        let view = UpdatePromptView(
+            store: store,
+            info: info,
+            currentVersion: currentVersion,
+            onLater: { [weak panel] in
+                guard store.availableUpdate == info else { return }
+                store.dismissUpdate(version: info.latestVersion)
+                panel?.close()
+            }
+        )
+        let controller: NSHostingController<UpdatePromptView>
+        if let existing = panel.contentViewController as? NSHostingController<UpdatePromptView> {
+            guard existing.rootView.info != info else { return }
+            existing.rootView = view
+            controller = existing
+        } else {
+            controller = NSHostingController(rootView: view)
+            panel.contentViewController = controller
+        }
+        panel.setContentSize(controller.sizeThatFits(in: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude)))
     }
 }
 
@@ -119,9 +152,9 @@ struct UpdatePromptView: View {
         return strings.text(.updateNow)
     }
 
-    /// 更新进行中禁用两个按钮；失败后可重试或稍后更新。
+    /// 检查、安装或面板尚未同步最新结果时禁止操作。
     private var buttonsDisabled: Bool {
-        store.isUpdating
+        store.isUpdating || store.isCheckingForUpdates || store.availableUpdate != info
     }
 
     var body: some View {
@@ -169,7 +202,7 @@ struct UpdatePromptView: View {
                     .disabled(buttonsDisabled)
                 Button(primaryTitle) {
                     didStartUpdate = true
-                    store.performUpdate()
+                    store.performUpdate(info: info)
                 }
                 .buttonStyle(UpdatePromptPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
@@ -182,6 +215,7 @@ struct UpdatePromptView: View {
         .padding(.top, 10)
         .padding(.bottom, 20)
         .frame(width: 400)
+        .onChange(of: info) { _ in didStartUpdate = false }
     }
 }
 

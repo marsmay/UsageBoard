@@ -105,9 +105,138 @@ final class UpdatePresentationTests: XCTestCase {
         }
     }
 
+    func testOpenPanelTracksNewResultAndClosesWhenUpdateDisappears() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-panel-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try makePromptStore(root: root)
+        let first = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/first.zip")
+        let second = UpdateInfo(latestVersion: "9.9.10", downloadURL: "https://example.com/second.zip", notes: "New release notes", latestBuild: 42)
+        store.availableUpdate = first
+        UpdatePrompt.present(info: first, store: store)
+        try await Task.sleep(for: .milliseconds(100))
+        let panel = try XCTUnwrap(promptPanels.first)
+        defer { panel.close() }
+        let host = try XCTUnwrap(panel.contentViewController as? NSHostingController<UpdatePromptView>)
+        let firstHeight = panel.frame.height
+        let staleLater = host.rootView.onLater
+
+        // Automatic checks can replace the result without another present() call.
+        store.availableUpdate = second
+        staleLater()
+        XCTAssertNil(store.configuration.dismissedUpdateVersion)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(host.rootView.info, second)
+        XCTAssertGreaterThan(panel.frame.height, firstHeight, "New notes must fit in the existing panel")
+        UpdatePrompt.present(info: second, store: store)
+        XCTAssertEqual(promptPanels.count, 1)
+
+        // Removing notes must shrink the existing panel again.
+        store.availableUpdate = first
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(host.rootView.info, first)
+        XCTAssertEqual(panel.frame.height, firstHeight, accuracy: 1)
+
+        store.runUpdateCheck(url: URL(string: "https://example.com/version.json")!, automatic: true)
+        for _ in 0..<100 where store.isCheckingForUpdates {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNil(store.availableUpdate)
+        XCTAssertFalse(panel.isVisible)
+
+        // A closed panel must release its subscription and permit a new prompt.
+        store.availableUpdate = second
+        UpdatePrompt.present(info: second, store: store)
+        try await Task.sleep(for: .milliseconds(100))
+        let reopened = try XCTUnwrap(promptPanels.first)
+        defer { reopened.close() }
+        XCTAssertFalse(reopened === panel)
+        let reopenedHost = try XCTUnwrap(reopened.contentViewController as? NSHostingController<UpdatePromptView>)
+        reopenedHost.rootView.onLater()
+        XCTAssertEqual(store.configuration.dismissedUpdateVersion, second.latestVersion)
+        XCTAssertFalse(reopened.isVisible)
+        await store.flushConfiguration()
+    }
+
+    func testDeferredPresentationRevalidatesCurrentResult() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-deferred-panel-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try makePromptStore(root: root)
+        let info = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/u.zip")
+        store.availableUpdate = info
+        UpdatePrompt.present(info: info, store: store)
+        store.availableUpdate = nil
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(promptPanels.isEmpty)
+        await store.flushConfiguration()
+    }
+
+    func testUpdateRejectsStaleConfirmationAndInProgressCheck() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-confirmation-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try makePromptStore(root: root)
+        let first = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/first.zip")
+        let replacement = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/replacement.zip")
+        store.availableUpdate = replacement
+        store.performUpdate(info: first)
+        XCTAssertFalse(store.isUpdating, "Same version with a changed download must require fresh confirmation")
+        XCTAssertEqual(store.updatePhase, .idle)
+
+        store.runUpdateCheck(url: URL(string: "https://example.com/version.json")!, automatic: true)
+        store.performUpdate(info: replacement)
+        XCTAssertFalse(store.isUpdating, "Do not start installing while a check is in flight")
+        for _ in 0..<100 where store.isCheckingForUpdates {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        store.performUpdate(info: replacement)
+        XCTAssertFalse(store.isUpdating, "A withdrawn update must not install")
+        XCTAssertEqual(store.updatePhase, .idle)
+
+        // A current confirmation still starts the downloader. An invalid scheme
+        // fails locally, without making a request or installing anything.
+        let invalid = UpdateInfo(latestVersion: "9.9.10", downloadURL: "http://example.com/u.zip")
+        store.availableUpdate = invalid
+        store.performUpdate(info: invalid)
+        XCTAssertTrue(store.isUpdating)
+        XCTAssertEqual(store.updatePhase, .downloading)
+        for _ in 0..<100 where store.isUpdating {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(store.isUpdating)
+        XCTAssertEqual(store.updatePhase, .failed)
+        await store.flushConfiguration()
+    }
+
+    private var promptPanels: [NSPanel] {
+        NSApp.windows.compactMap { $0 as? NSPanel }.filter {
+            $0.isVisible && $0.contentViewController is NSHostingController<UpdatePromptView>
+        }
+    }
+
+    private func makePromptStore(root: URL) throws -> UsageBoardStore {
+        let config = ConfigStore(fileURL: root.appendingPathComponent("config.json"))
+        try config.save(AppConfiguration(autoUpdateCheck: false))
+        return UsageBoardStore(
+            configStore: config,
+            stateStore: PluginStateStore(directoryURL: root.appendingPathComponent("states")),
+            updateChecker: NoAvailableUpdateChecker()
+        )
+    }
+
     private func snapshot(_ view: NSView) throws -> Data {
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
         return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+    }
+}
+
+private struct NoAvailableUpdateChecker: UpdateChecking {
+    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+        UpdateCheckResult(
+            info: UpdateInfo(latestVersion: currentVersion, downloadURL: "https://example.com/u.zip"),
+            hasUpdate: false
+        )
     }
 }

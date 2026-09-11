@@ -559,8 +559,9 @@ final class UsageBoardStore: ObservableObject {
         }
     }
 
-    func performUpdate() {
-        guard !isUpdating, let info = availableUpdate, let url = URL(string: info.downloadURL) else { return }
+    func performUpdate(info: UpdateInfo) {
+        guard !isUpdating, !isCheckingForUpdates, availableUpdate == info,
+              let url = URL(string: info.downloadURL) else { return }
         isUpdating = true
         updatePhase = .downloading
         updateMessage = storeMessage(.downloadingUpdate)
