@@ -112,6 +112,7 @@ Store.refresh(pluginID:force:)
 - 重复刷新合并，包括手动强制刷新；force 只绕过新鲜度检查，不绕过启用、必填参数和已有执行任务检查。
 - 禁用、删除或修改执行配置时取消 in-flight 任务，取消传到后台执行器。修改配置后的新执行等待旧任务结束，已取消或过期结果不发布。
 - 系统睡眠期间停止发起定时刷新，唤醒后检查到期插件；4 小时安全超时避免状态永久停留在非活动态。
+- 更新检查由独立 Task 循环按 6 小时间隔执行（`autoUpdateCheck` 默认开启，通用设置可关闭，开启时立即检查一次）；自动检查失败静默并保留已有结果，只有手动检查向用户反馈错误。`dismissedUpdateVersion` 持久化"稍后更新"的版本，打开弹层/设置时的自动提示只针对未跳过的版本，本次运行按版本去重，出现更新版本后恢复；指示灯胶囊始终依据 `availableUpdate` 展示，推迟后仍可手动打开提示。`UpdateStatusView` 在弹层头部和设置公共区域展示检查/安装进度与失败信息，更新或检查期间禁用胶囊；模态提示期间保留原弹层，点击更新后可继续看到状态。
 
 配置写入：`scheduleConfigurationWrite` 通过后台 `ConfigurationSaveCoordinator` 串行等待前一次保存，使用 generation 合并尚未执行的旧快照。`persistConfiguration` 只保存；`saveConfiguration` 还重建快照、调整调度和刷新到期插件。异步 `flushConfiguration` 持续等待保存，覆盖等待期间新增的写入；更新安装在请求退出前调用它。退出回调使用不依赖 MainActor 的同步等待，上限 5 秒；完成后返回 `.terminateNow`，超时返回 `.terminateCancel`，保留后台保存任务供完成后再次退出。
 

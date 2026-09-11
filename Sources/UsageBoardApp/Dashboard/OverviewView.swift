@@ -29,6 +29,9 @@ struct OverviewView: View {
                         .font(UB.Font.popoverTitle)
                         .tracking(-0.1)
                     Spacer()
+                    if let info = store.availableUpdate {
+                        UpdateBadgeButton(info: info, store: store)
+                    }
                     Button {
                         store.refreshAll()
                     } label: {
@@ -44,6 +47,8 @@ struct OverviewView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+
+                UpdateStatusView(store: store)
 
                 Divider()
             }
@@ -93,6 +98,33 @@ private struct PopoverHeaderHeightKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// 有新版本时显示在刷新按钮前的指示灯胶囊，点击打开更新提示。
+struct UpdateBadgeButton: View {
+    let info: UpdateInfo
+    let store: UsageBoardStore
+
+    var body: some View {
+        Button {
+            UpdatePrompt.present(info: info, store: store)
+        } label: {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 5, height: 5)
+                Text(info.latestVersion)
+                    .font(.system(size: 10, weight: .medium).monospacedDigit())
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.green.opacity(0.15)))
+        }
+        .buttonStyle(.plain)
+        .disabled(store.isUpdating || store.isCheckingForUpdates)
+        .help(AppLocalization.shared.updateAvailableTitle(latestVersion: info.latestVersion))
+        .accessibilityLabel(AppLocalization.shared.updateAvailableTitle(latestVersion: info.latestVersion))
     }
 }
 

@@ -44,6 +44,8 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
     public var chartMode: ChartMode
     public var plugins: [PluginConfiguration]
     public var launchAtLogin: Bool
+    public var autoUpdateCheck: Bool
+    public var dismissedUpdateVersion: String?
 
     public init(
         schemaVersion: Int = 1,
@@ -52,7 +54,9 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         overviewDisplayMode: DisplayMode = .tabs,
         chartMode: ChartMode = .line,
         plugins: [PluginConfiguration] = [],
-        launchAtLogin: Bool = false
+        launchAtLogin: Bool = false,
+        autoUpdateCheck: Bool = true,
+        dismissedUpdateVersion: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.language = language
@@ -61,6 +65,8 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         self.chartMode = chartMode
         self.plugins = plugins
         self.launchAtLogin = launchAtLogin
+        self.autoUpdateCheck = autoUpdateCheck
+        self.dismissedUpdateVersion = dismissedUpdateVersion
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -71,6 +77,8 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         case chartMode
         case plugins
         case launchAtLogin
+        case autoUpdateCheck
+        case dismissedUpdateVersion
     }
 
     public init(from decoder: Decoder) throws {
@@ -82,5 +90,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
         chartMode = try container.decodeIfPresent(ChartMode.self, forKey: .chartMode) ?? .line
         plugins = try container.decodeIfPresent([PluginConfiguration].self, forKey: .plugins) ?? []
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        autoUpdateCheck = try container.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
+        dismissedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
     }
 }

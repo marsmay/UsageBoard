@@ -17,6 +17,11 @@ public struct UpdateInfo: Decodable, Equatable, Sendable {
 public struct UpdateCheckResult: Equatable, Sendable {
     public var info: UpdateInfo
     public var hasUpdate: Bool
+
+    public init(info: UpdateInfo, hasUpdate: Bool) {
+        self.info = info
+        self.hasUpdate = hasUpdate
+    }
 }
 
 public struct DownloadedUpdate: Equatable, Sendable {

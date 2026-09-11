@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import UsageBoardCore
 
@@ -34,29 +33,13 @@ struct AboutView: View {
                     .textSelection(.enabled)
                     .padding(.top, 10)
 
-                Divider().padding(.vertical, 22)
-
                 Button(store.isCheckingForUpdates ? strings.text(.checkingUpdate) : strings.text(.checkForUpdates)) {
                     isUserChecking = true
                     store.checkForUpdates()
                 }
                 .controlSize(.large)
                 .disabled(store.isCheckingForUpdates || store.isUpdating)
-
-                VStack(spacing: 8) {
-                    if store.isCheckingForUpdates || store.isUpdating {
-                        ProgressView().controlSize(.small)
-                    }
-                    if let message = store.updateMessage {
-                        Text(message)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding(.top, 12)
+                .padding(.top, 22)
             }
             .frame(maxWidth: 360)
             .padding(28)
@@ -66,22 +49,7 @@ struct AboutView: View {
         .onChange(of: store.availableUpdate) { newValue in
             guard isUserChecking, let newValue else { return }
             isUserChecking = false
-            showUpdateAlert(newValue)
-        }
-    }
-
-    private func showUpdateAlert(_ info: UpdateInfo) {
-        let alert = NSAlert()
-        alert.messageText = strings.updateAvailableTitle(latestVersion: info.latestVersion)
-        alert.informativeText = info.notes?.isEmpty == false
-            ? info.notes!
-            : strings.updateAvailableMessage(currentVersion: currentVersion, latestVersion: info.latestVersion)
-        alert.addButton(withTitle: strings.text(.updateNow))
-        alert.addButton(withTitle: strings.text(.cancel))
-        alert.alertStyle = .informational
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            store.performUpdate()
+            UpdatePrompt.present(info: newValue, store: store)
         }
     }
 }

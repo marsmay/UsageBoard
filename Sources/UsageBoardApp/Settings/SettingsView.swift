@@ -45,6 +45,8 @@ struct SettingsView: View {
 
                 Divider()
 
+                UpdateStatusView(store: store)
+
                 if let error = store.lastError {
                     Text(error)
                         .font(.callout)

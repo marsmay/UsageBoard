@@ -17,7 +17,7 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
 - New plugins are disabled by default; required parameters are checked before enabling.
 - Plugin data cached to disk by `stateID`; last successful data shown on launch.
 - Bundled plugin symlinks are checked on every launch; add the desired plugins in Settings before enabling them.
-- Settings supports an immediately applied light/dark/system theme, launch at login, plugin drag-and-drop reordering, plugin help docs, update checking, and in-app updates.
+- Settings supports an immediately applied light/dark/system theme, launch at login, automatic update checks (on by default, can be disabled in General settings), plugin drag-and-drop reordering, plugin help docs, update checking, and in-app updates. When an update is available, the menu bar popover shows a new-version badge and opening the popover or Settings prompts once per version per run; choosing "Later" silences automatic prompts for that version while keeping the badge clickable. Update progress and failures are shown in the popover and across Settings.
 - Usage display supports percentage or ratio, reset time, progress bar colors, and token usage charts with line or stacked bar modes.
 - Plugins can return failures as `{"error": "message"}`; the error is shown directly in the card body.
 - Supports Chinese and English; both app UI and plugin metadata display in the selected language.

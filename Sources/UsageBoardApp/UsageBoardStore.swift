@@ -24,6 +24,8 @@ final class UsageBoardStore: ObservableObject {
     private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     private var inflightRefreshTasks: [UUID: Task<Void, Never>] = [:]
     private var schedulerKeys: [UUID: SchedulerKey] = [:]
+    private var updateCheckTask: Task<Void, Never>?
+    private var presentedUpdateVersions: Set<String> = []
     private var isSystemActive: Bool = true
     private var systemActivityObservers: [NSObjectProtocol] = []
     private var systemInactiveTimeout: Task<Void, Never>?
@@ -151,12 +153,14 @@ final class UsageBoardStore: ObservableObject {
         rebuildSnapshots()
         loadCachedStates()
         startSchedulers()
+        startUpdateCheckScheduler()
         observeSystemActivity()
     }
 
     deinit {
         refreshTasks.values.forEach { $0.cancel() }
         inflightRefreshTasks.values.forEach { $0.cancel() }
+        updateCheckTask?.cancel()
         systemInactiveTimeout?.cancel()
         configSaver.cancel()
         // NotificationCenter observers are intentionally not removed here:
@@ -457,28 +461,89 @@ final class UsageBoardStore: ObservableObject {
         return URL(string: string)
     }()
 
-    func checkForUpdates() {
+    /// 自动检查间隔：6 小时。
+    private static let updateCheckInterval: TimeInterval = 6 * 3600
+
+    /// 有可用更新且用户未对该版本点过"稍后更新"时返回，仅用于自动提示。
+    var pendingUpdate: UpdateInfo? {
+        guard let availableUpdate,
+              availableUpdate.latestVersion != configuration.dismissedUpdateVersion else { return nil }
+        return availableUpdate
+    }
+
+    /// 每个版本在本次运行中自动提示一次；手动入口始终使用 availableUpdate。
+    func takePendingUpdatePrompt() -> UpdateInfo? {
+        guard !isUpdating, !isCheckingForUpdates, let info = pendingUpdate,
+              presentedUpdateVersions.insert(info.latestVersion).inserted else { return nil }
+        return info
+    }
+
+    func setAutoUpdateCheck(_ enabled: Bool) {
+        guard configuration.autoUpdateCheck != enabled else { return }
+        configuration.autoUpdateCheck = enabled
+        persistConfiguration()
+        if enabled {
+            startUpdateCheckScheduler()
+        } else {
+            updateCheckTask?.cancel()
+            updateCheckTask = nil
+        }
+    }
+
+    /// "稍后更新"：持久化跳过该版本，直到出现更新的版本前不再自动提示。
+    func dismissUpdate(version: String) {
+        guard configuration.dismissedUpdateVersion != version else { return }
+        configuration.dismissedUpdateVersion = version
+        persistConfiguration()
+    }
+
+    private func startUpdateCheckScheduler() {
+        updateCheckTask?.cancel()
+        guard configuration.autoUpdateCheck else { return }
+        updateCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.checkForUpdates(automatic: true)
+                try? await Task.sleep(for: .seconds(Self.updateCheckInterval))
+            }
+        }
+    }
+
+    /// 自动检查失败保持静默并保留已有结果；手动检查向用户反馈错误。
+    func checkForUpdates(automatic: Bool = false) {
         guard !isCheckingForUpdates, !isUpdating else { return }
         guard let url = Self.updateCheckURL else {
-            updateMessage = storeMessage(.updateCheckURLMissing)
+            if !automatic {
+                updateMessage = storeMessage(.updateCheckURLMissing)
+            }
             return
         }
-        availableUpdate = nil
+        runUpdateCheck(url: url, automatic: automatic)
+    }
+
+    /// 拆出 URL 注入点便于测试。
+    func runUpdateCheck(url: URL, automatic: Bool) {
+        if !automatic {
+            availableUpdate = nil
+            updateMessage = nil
+        }
         isCheckingForUpdates = true
-        updateMessage = nil
         Task {
             defer { isCheckingForUpdates = false }
             do {
                 let result = try await updateChecker.check(currentVersion: currentVersion, url: url)
                 if result.hasUpdate {
                     availableUpdate = result.info
-                    updateMessage = nil
                 } else {
                     availableUpdate = nil
-                    updateMessage = storeMessage(.alreadyLatestVersion)
+                    if !automatic {
+                        updateMessage = storeMessage(.alreadyLatestVersion)
+                    }
                 }
             } catch {
-                updateMessage = storeMessage(.updateCheckFailed(error.localizedDescription))
+                if !automatic {
+                    updateMessage = storeMessage(.updateCheckFailed(error.localizedDescription))
+                }
             }
         }
     }

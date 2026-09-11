@@ -13,6 +13,8 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertEqual(configuration.overviewDisplayMode, .tabs)
         XCTAssertEqual(configuration.chartMode, .line)
         XCTAssertEqual(configuration.plugins.first?.refreshIntervalSeconds, 300)
+        XCTAssertTrue(configuration.autoUpdateCheck)
+        XCTAssertNil(configuration.dismissedUpdateVersion)
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-\(UUID().uuidString).json")
         let store = ConfigStore(fileURL: url)
@@ -30,6 +32,17 @@ final class UsageBoardTests: XCTestCase {
         let decoded = try UsageBoardJSON.decoder().decode(AppConfiguration.self, from: data)
 
         XCTAssertEqual(decoded.chartMode, .bar)
+    }
+
+    func testConfigurationPersistsUpdatePreferences() throws {
+        var configuration = AppConfiguration()
+        configuration.autoUpdateCheck = false
+        configuration.dismissedUpdateVersion = "1.2.3"
+        let data = try UsageBoardJSON.encoder().encode(configuration)
+        let decoded = try UsageBoardJSON.decoder().decode(AppConfiguration.self, from: data)
+
+        XCTAssertFalse(decoded.autoUpdateCheck)
+        XCTAssertEqual(decoded.dismissedUpdateVersion, "1.2.3")
     }
 
     func testPluginsDirectoryIsNextToConfigurationFile() {

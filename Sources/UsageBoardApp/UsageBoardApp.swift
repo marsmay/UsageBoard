@@ -75,6 +75,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         newPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover = newPopover
         startGlobalClickMonitor()
+        presentPendingUpdatePromptIfNeeded()
+    }
+
+    /// 打开状态栏弹层或设置窗口时，对每个未跳过的版本自动提示一次。
+    private func presentPendingUpdatePromptIfNeeded() {
+        // Defer one turn so the popover / settings window is visible first.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let info = self.store.takePendingUpdatePrompt() else { return }
+            UpdatePrompt.present(info: info, store: self.store)
+        }
     }
 
     private func startGlobalClickMonitor() {
@@ -93,6 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func closePopoverIfNeeded(event: NSEvent) {
+        // Keep the originating popover visible while interacting with an update alert.
+        guard NSApp.modalWindow == nil else { return }
         guard let popover, popover.isShown else { return }
         if let button = statusItem?.button,
            let window = event.window,
@@ -125,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     // MARK: - Settings
 
     func openSettings() {
+        presentPendingUpdatePromptIfNeeded()
         // Close popover if open
         if let popover, popover.isShown {
             popover.performClose(nil)
