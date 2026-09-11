@@ -40,6 +40,21 @@ struct AboutView: View {
                 .controlSize(.large)
                 .disabled(store.isCheckingForUpdates || store.isUpdating)
                 .padding(.top, 22)
+
+                VStack(spacing: 8) {
+                    if store.isCheckingForUpdates || store.isUpdating {
+                        ProgressView().controlSize(.small)
+                    }
+                    if let message = store.updateMessage {
+                        Text(message)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.top, 12)
             }
             .frame(maxWidth: 360)
             .padding(28)

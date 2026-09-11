@@ -69,12 +69,12 @@ struct AppLocalization {
         language == .en ? "New version \(latestVersion) available" : "发现新版本 \(latestVersion)"
     }
 
-    func updateAvailableMessage(currentVersion: String, latestVersion: String) -> String {
+    func updateVersionSummary(currentVersion: String) -> String {
         switch language {
         case .en:
-            return "Current version \(currentVersion), new version \(latestVersion).\nDownload and update now?"
+            return "Current version \(currentVersion)."
         case .zhHans:
-            return "当前版本 \(currentVersion)，新版本 \(latestVersion)。\n是否立即下载并更新？"
+            return "当前版本 \(currentVersion)。"
         }
     }
 
@@ -165,11 +165,15 @@ struct AppLocalization {
         case .searchPlugins: return "Search plugins"
         case .errorBadge: return "Error"
         case .settingsWindowTitle: return "UsageBoard Settings"
-        case .updateNow: return "Update"
+        case .updateNow: return "Update Now"
         case .updateLater: return "Later"
+        case .updatePhaseDownloading: return "Downloading..."
+        case .updatePhaseInstalling: return "Installing..."
+        case .updatePhaseFailed: return "Update Failed"
         case .cancel: return "Cancel"
         case .scriptPathNotFound: return "Script file does not exist"
         case .resetCards: return "Reset cards"
+        case .updateNotesTitle: return "What's New"
         }
     }
 
@@ -235,11 +239,15 @@ struct AppLocalization {
         case .searchPlugins: return "搜索插件"
         case .errorBadge: return "错误"
         case .settingsWindowTitle: return "UsageBoard 设置"
-        case .updateNow: return "更新"
+        case .updateNow: return "立即更新"
         case .updateLater: return "稍后更新"
+        case .updatePhaseDownloading: return "下载中..."
+        case .updatePhaseInstalling: return "安装中..."
+        case .updatePhaseFailed: return "更新失败"
         case .cancel: return "取消"
         case .scriptPathNotFound: return "脚本文件不存在"
         case .resetCards: return "重置卡"
+        case .updateNotesTitle: return "更新内容"
         }
     }
 
@@ -306,8 +314,12 @@ struct AppLocalization {
         case settingsWindowTitle
         case updateNow
         case updateLater
+        case updatePhaseDownloading
+        case updatePhaseInstalling
+        case updatePhaseFailed
         case cancel
         case scriptPathNotFound
         case resetCards
+        case updateNotesTitle
     }
 }

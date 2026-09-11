@@ -48,8 +48,6 @@ struct OverviewView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
 
-                UpdateStatusView(store: store)
-
                 Divider()
             }
             .background(
@@ -111,9 +109,9 @@ struct UpdateBadgeButton: View {
             UpdatePrompt.present(info: info, store: store)
         } label: {
             HStack(spacing: 4) {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 5, height: 5)
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.green)
                 Text(info.latestVersion)
                     .font(.system(size: 10, weight: .medium).monospacedDigit())
             }

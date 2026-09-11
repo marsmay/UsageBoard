@@ -3,6 +3,16 @@ import Foundation
 import ServiceManagement
 import UsageBoardCore
 
+// MARK: - Update Phase
+
+/// 更新执行进度，驱动提示弹窗按钮的精简状态文本。
+enum UpdatePhase: Equatable {
+    case idle
+    case downloading
+    case installing
+    case failed
+}
+
 @MainActor
 final class UsageBoardStore: ObservableObject {
     @Published var configuration: AppConfiguration
@@ -11,6 +21,7 @@ final class UsageBoardStore: ObservableObject {
     @Published var updateMessage: String?
     @Published var availableUpdate: UpdateInfo?
     @Published var isUpdating: Bool = false
+    @Published private(set) var updatePhase: UpdatePhase = .idle
     @Published private(set) var isCheckingForUpdates = false
     @Published var selectedTabID: UUID?
     @Published private(set) var nextRefreshAt: [UUID: Date] = [:]
@@ -551,6 +562,7 @@ final class UsageBoardStore: ObservableObject {
     func performUpdate() {
         guard !isUpdating, let info = availableUpdate, let url = URL(string: info.downloadURL) else { return }
         isUpdating = true
+        updatePhase = .downloading
         updateMessage = storeMessage(.downloadingUpdate)
 
         Task {
@@ -558,6 +570,7 @@ final class UsageBoardStore: ObservableObject {
                 let downloader = UpdateDownloader()
                 let update = try await downloader.download(from: url, expectedVersion: info.latestVersion)
                 defer { try? FileManager.default.removeItem(at: update.cleanupDirectoryURL) }
+                updatePhase = .installing
                 updateMessage = storeMessage(.installingUpdate)
                 try await Task.detached(priority: .utility) {
                     try AppRelauncher.relaunch(replacingWith: update.appURL)
@@ -567,6 +580,7 @@ final class UsageBoardStore: ObservableObject {
                 NSApp.terminate(nil)
             } catch {
                 isUpdating = false
+                updatePhase = .failed
                 updateMessage = storeMessage(.updateFailed(error.localizedDescription))
             }
         }

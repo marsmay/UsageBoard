@@ -5,12 +5,14 @@ public struct UpdateInfo: Decodable, Equatable, Sendable {
     public var downloadURL: String
     public var updatedAt: Date?
     public var notes: String?
+    public var latestBuild: Int?
 
-    public init(latestVersion: String, downloadURL: String, updatedAt: Date? = nil, notes: String? = nil) {
+    public init(latestVersion: String, downloadURL: String, updatedAt: Date? = nil, notes: String? = nil, latestBuild: Int? = nil) {
         self.latestVersion = latestVersion
         self.downloadURL = downloadURL
         self.updatedAt = updatedAt
         self.notes = notes
+        self.latestBuild = latestBuild
     }
 }
 

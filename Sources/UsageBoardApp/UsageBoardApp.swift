@@ -46,6 +46,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func showPopover() {
+        // 更新提示等 modal 会话期间禁止关闭/重建 popover：modal 事件循环会饿死
+        // 弹层的 SwiftUI 布局测量，重建的弹层会卡在最小高度。
+        guard NSApp.modalWindow == nil else {
+            NSSound.beep()
+            return
+        }
         guard let button = statusItem?.button else { return }
         if let popover, popover.isShown {
             popover.performClose(nil)
@@ -173,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     // MARK: - NSPopoverDelegate
 
     func popoverDidClose(_ notification: Notification) {
+        // 只响应当前 popover 的关闭，忽略延迟到达的旧 popover 通知。
+        guard let closed = notification.object as? NSPopover, closed === popover else { return }
         stopGlobalClickMonitor()
         popover = nil
     }

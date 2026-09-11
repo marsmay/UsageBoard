@@ -55,6 +55,9 @@ fi
 NOTES=$(echo "$RAW_NOTES" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().strip())[1:-1])')
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST"
+# build 号规则与 InTime 一致：UTC %y%j%H%M（年+年积日+时+分），单调递增
+APP_BUILD="${APP_BUILD:-$(TZ=UTC date +%y%j%H%M)}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD" "$PLIST"
 
 # --- Build ---
 echo "构建 release..."
@@ -96,6 +99,7 @@ cat > "$DIST_DIR/version.json" << EOF
 {
   "updatedAt" : "${UPDATED_AT}",
   "latestVersion" : "${NEW_VERSION}",
+  "latestBuild" : ${APP_BUILD},
   "downloadURL" : "${DOWNLOAD_URL}",
   "notes" : "${NOTES}"
 }

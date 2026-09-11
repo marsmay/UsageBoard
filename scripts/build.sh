@@ -7,6 +7,10 @@ DIST_DIR="$PROJECT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/UsageBoard.app"
 PLIST="$APP_BUNDLE/Contents/Info.plist"
 UPDATE_CHECK_URL="${UB_UPDATE_CHECK_URL:-https://may.ltd/usageboard/version.json}"
+# 可选参数：强制指定版本号（用于更新流程的本地测试），如 bash scripts/build.sh 0.1.0
+VERSION="${1:-}"
+# build 号规则与 InTime 一致：UTC %y%j%H%M（年+年积日+时+分），单调递增
+APP_BUILD="${APP_BUILD:-$(TZ=UTC date +%y%j%H%M)}"
 
 if [ ! -f "$PLIST" ]; then
     mkdir -p "$(dirname "$PLIST")"
@@ -28,6 +32,12 @@ fi
 
 # --- Kill running instance ---
 pkill -x "UsageBoard" 2>/dev/null && echo "已关闭运行中的 UsageBoard" || true
+
+if [ -n "$VERSION" ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+    echo "版本号指定为: $VERSION"
+fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD" "$PLIST"
 
 # --- Build ---
 echo "构建 release..."
