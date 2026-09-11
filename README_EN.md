@@ -8,7 +8,7 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
 
 - Resides in the menu bar; click the icon to open a quick preview.
 - Supports grouped and tabbed display modes.
-- Supports manual refresh, scheduled refresh, per-card refresh, and a quit button.
+- Supports manual refresh, scheduled refresh, per-card refresh, and a quit button. Quitting waits for pending configuration saves; if they take longer than 5 seconds, the quit is cancelled and can be retried after saving completes.
 - Scheduled refresh pauses during system sleep and resumes on wake.
 - Plugin-based usage queries with per-plugin configurable refresh intervals and parameters.
 - Plugin icons support local resources and cached remote images; bundled icons work offline and follow the light/dark theme.

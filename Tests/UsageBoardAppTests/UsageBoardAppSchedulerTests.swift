@@ -241,6 +241,44 @@ final class UsageBoardAppSchedulerTests: XCTestCase {
         XCTAssertEqual(recorder.savedChartMode, .line)
     }
 
+    func testFlushConfigurationBlockingPersistsPendingWrite() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-flush-blocking-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let recorder = BlockingSaveRecorder()
+        let store = UsageBoardStore(configStore: BlockingSaveConfigStore(recorder: recorder, root: root),
+                                    stateStore: EmptyStateStore(), executor: FailingExecutor(),
+                                    updateChecker: NoopUpdateChecker())
+        store.configuration.chartMode = .bar
+        store.persistConfiguration()
+        // Termination path: main thread blocks here, so the pending save must
+        // complete on background threads.
+        XCTAssertTrue(store.flushConfigurationBlocking(timeout: 5))
+        XCTAssertEqual(recorder.savedChartMode, .bar)
+    }
+
+    func testBlockingFlushTimeoutKeepsPendingWriteForRetry() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-flush-timeout-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let recorder = BlockingSaveRecorder()
+        defer { recorder.releaseAll() }
+        let store = UsageBoardStore(configStore: BlockingSaveConfigStore(recorder: recorder, root: root),
+                                    stateStore: EmptyStateStore(), executor: FailingExecutor(),
+                                    updateChecker: NoopUpdateChecker())
+        recorder.enableBlocking()
+        store.configuration.chartMode = .bar
+        store.persistConfiguration()
+        try await waitForSaveCount(1, recorder: recorder)
+
+        XCTAssertFalse(store.flushConfigurationBlocking(timeout: 0.05),
+                       "A pending write must prevent termination when the wait times out")
+        XCTAssertEqual(recorder.savedChartMode, .line)
+
+        recorder.releaseOne()
+        XCTAssertTrue(store.flushConfigurationBlocking(timeout: 5))
+        XCTAssertEqual(recorder.savedChartMode, .bar,
+                       "Cancelling termination must leave the pending write able to finish")
+    }
+
     private func waitForSaveCount(_ count: Int, recorder: BlockingSaveRecorder) async throws {
         for _ in 0..<100 where recorder.startedCount < count {
             try await Task.sleep(for: .milliseconds(10))

@@ -27,8 +27,80 @@ final class UsageBoardStore: ObservableObject {
     private var isSystemActive: Bool = true
     private var systemActivityObservers: [NSObjectProtocol] = []
     private var systemInactiveTimeout: Task<Void, Never>?
-    private var configSaveTask: Task<Void, Never>?
-    private var configSaveGeneration: Int = 0
+    private let configSaver: ConfigurationSaveCoordinator
+
+    /// Serializes configuration writes off the main actor so termination-time
+    /// flushes can complete while the main thread waits synchronously.
+    private final class ConfigurationSaveCoordinator: @unchecked Sendable {
+        private let store: any ConfigStoring
+        private let lock = NSLock()
+        private var saveTask: Task<Void, Never>?
+        private var generation: Int = 0
+        var onFailure: (@Sendable (any Error) -> Void)?
+
+        init(store: any ConfigStoring) {
+            self.store = store
+        }
+
+        func schedule(_ configuration: AppConfiguration) {
+            lock.lock()
+            generation &+= 1
+            let myGeneration = generation
+            let previous = saveTask
+            let task = Task.detached(priority: .utility) { [store, weak self] in
+                _ = await previous?.value
+                if Task.isCancelled { return }
+                // Coalesce: skip if a newer save has been scheduled since
+                if let self, !self.isLatest(myGeneration) { return }
+                do {
+                    try store.save(configuration)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self?.onFailure?(error)
+                }
+            }
+            saveTask = task
+            lock.unlock()
+        }
+
+        func flush() async {
+            while true {
+                let state = currentState()
+                await state.task?.value
+                if isLatest(state.generation) { return }
+            }
+        }
+
+        /// Returns false on timeout, leaving pending writes running so the
+        /// caller can cancel termination and retry after they finish.
+        func flushBlocking(timeout: TimeInterval) -> Bool {
+            let done = DispatchSemaphore(value: 0)
+            Task.detached(priority: .userInitiated) {
+                await self.flush()
+                done.signal()
+            }
+            return done.wait(timeout: .now() + timeout) == .success
+        }
+
+        func cancel() {
+            lock.lock()
+            saveTask?.cancel()
+            lock.unlock()
+        }
+
+        private func currentState() -> (generation: Int, task: Task<Void, Never>?) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (generation, saveTask)
+        }
+
+        private func isLatest(_ expected: Int) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return generation == expected
+        }
+    }
 
     private struct SchedulerKey: Equatable {
         let refreshIntervalSeconds: Int
@@ -57,6 +129,14 @@ final class UsageBoardStore: ObservableObject {
         configuration = loadedConfiguration
         activeLanguage = loadedConfiguration.language
         AppLocalization.shared = AppLocalization(language: activeLanguage)
+        let saver = ConfigurationSaveCoordinator(store: configStore)
+        self.configSaver = saver
+        saver.onFailure = { [weak self] error in
+            Task { @MainActor in
+                guard let self else { return }
+                self.lastError = self.storeMessage(.configurationSaveFailed(error.localizedDescription))
+            }
+        }
         do {
             try installBundledPlugins()
         } catch {
@@ -78,7 +158,7 @@ final class UsageBoardStore: ObservableObject {
         refreshTasks.values.forEach { $0.cancel() }
         inflightRefreshTasks.values.forEach { $0.cancel() }
         systemInactiveTimeout?.cancel()
-        configSaveTask?.cancel()
+        configSaver.cancel()
         // NotificationCenter observers are intentionally not removed here:
         // they live in a MainActor-isolated non-Sendable array, and the
         // store is a long-lived singleton — observers are reclaimed at process exit.
@@ -122,35 +202,16 @@ final class UsageBoardStore: ObservableObject {
     }
 
     func flushConfiguration() async {
-        while true {
-            let generation = configSaveGeneration
-            await configSaveTask?.value
-            if generation == configSaveGeneration { return }
-        }
+        await configSaver.flush()
+    }
+
+    /// Waits only for background save tasks; a timeout must cancel termination.
+    func flushConfigurationBlocking(timeout: TimeInterval = 5) -> Bool {
+        configSaver.flushBlocking(timeout: timeout)
     }
 
     private func scheduleConfigurationWrite() {
-        configSaveGeneration &+= 1
-        let myGeneration = configSaveGeneration
-        let snapshot = configuration
-        let store = configStore
-        let previous = configSaveTask
-        configSaveTask = Task { [weak self] in
-            _ = await previous?.value
-            if Task.isCancelled { return }
-            guard let self else { return }
-            // Coalesce: skip if a newer save has been scheduled since
-            if self.configSaveGeneration != myGeneration { return }
-            do {
-                try await Task.detached(priority: .utility) {
-                    try store.save(snapshot)
-                }.value
-            } catch is CancellationError {
-                return
-            } catch {
-                self.lastError = self.storeMessage(.configurationSaveFailed(error.localizedDescription))
-            }
-        }
+        configSaver.schedule(configuration)
     }
 
     func addPlugin(fileURL: URL) {
@@ -436,6 +497,8 @@ final class UsageBoardStore: ObservableObject {
                 try await Task.detached(priority: .utility) {
                     try AppRelauncher.relaunch(replacingWith: update.appURL)
                 }.value
+                // Finish pending saves before entering the synchronous quit path.
+                await flushConfiguration()
                 NSApp.terminate(nil)
             } catch {
                 isUpdating = false

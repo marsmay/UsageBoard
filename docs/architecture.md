@@ -113,7 +113,7 @@ Store.refresh(pluginID:force:)
 - 禁用、删除或修改执行配置时取消 in-flight 任务，取消传到后台执行器。修改配置后的新执行等待旧任务结束，已取消或过期结果不发布。
 - 系统睡眠期间停止发起定时刷新，唤醒后检查到期插件；4 小时安全超时避免状态永久停留在非活动态。
 
-配置写入：`scheduleConfigurationWrite` 串行等待前一次保存，使用 generation 合并尚未执行的旧快照。`persistConfiguration` 只保存；`saveConfiguration` 还重建快照、调整调度和刷新到期插件。退出前 `flushConfiguration` 持续等待保存，覆盖等待期间新增的写入。
+配置写入：`scheduleConfigurationWrite` 通过后台 `ConfigurationSaveCoordinator` 串行等待前一次保存，使用 generation 合并尚未执行的旧快照。`persistConfiguration` 只保存；`saveConfiguration` 还重建快照、调整调度和刷新到期插件。异步 `flushConfiguration` 持续等待保存，覆盖等待期间新增的写入；更新安装在请求退出前调用它。退出回调使用不依赖 MainActor 的同步等待，上限 5 秒；完成后返回 `.terminateNow`，超时返回 `.terminateCancel`，保留后台保存任务供完成后再次退出。
 
 ## 5. 插件执行与协议
 

@@ -28,11 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        Task {
-            await store.flushConfiguration()
-            sender.reply(toApplicationShouldTerminate: true)
-        }
-        return .terminateLater
+        // A MainActor Task may not run in the termination modal loop. Wait for
+        // background saves synchronously, cancelling this quit if they time out.
+        return store.flushConfigurationBlocking() ? .terminateNow : .terminateCancel
     }
 
     // MARK: - Status Item
