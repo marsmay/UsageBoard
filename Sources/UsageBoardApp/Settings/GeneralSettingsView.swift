@@ -64,15 +64,15 @@ struct GeneralSettingsView: View {
             }
 
             SettingsSection(title: strings.text(.behaviorSection)) {
-                SettingsRow(label: strings.text(.autoUpdateCheck), hint: strings.text(.autoUpdateCheckHint)) {
-                    Toggle(strings.text(.autoUpdateCheck), isOn: Binding(
-                        get: { store.configuration.autoUpdateCheck },
-                        set: { store.setAutoUpdateCheck($0) }
+                SettingsRow(label: strings.text(.updateBadge), hint: strings.text(.updateBadgeHint)) {
+                    Toggle(strings.text(.updateBadge), isOn: Binding(
+                        get: { store.configuration.showUpdateBadge },
+                        set: { store.setShowUpdateBadge($0) }
                     ))
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .labelsHidden()
-                    .accessibilityLabel(strings.text(.autoUpdateCheck))
+                    .accessibilityLabel(strings.text(.updateBadge))
                 }
                 Divider().padding(.horizontal, 14)
                 SettingsRow(label: strings.text(.launchAtLogin), hint: strings.text(.launchAtLoginHint)) {

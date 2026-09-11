@@ -6,12 +6,12 @@ import XCTest
 
 @MainActor
 final class UpdatePresentationTests: XCTestCase {
-    func testPopoverRetainsBadgeAfterLaterAndShowsUpdateFeedback() async throws {
+    func testPopoverBadgeUnaffectedByUpdateStatus() async throws {
         for language in AppLanguage.allCases {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-update-ui-\(UUID())")
             defer { try? FileManager.default.removeItem(at: root) }
             let config = ConfigStore(fileURL: root.appendingPathComponent("config.json"))
-            try config.save(AppConfiguration(language: language, autoUpdateCheck: false))
+            try config.save(AppConfiguration(language: language))
             let store = UsageBoardStore(configStore: config, stateStore: PluginStateStore(directoryURL: root.appendingPathComponent("states")))
             store.availableUpdate = UpdateInfo(latestVersion: "9.9.10", downloadURL: "https://example.com/update.zip")
             let host = NSHostingView(rootView: OverviewView(store: store, maximumHeight: 600).frame(width: 380))
@@ -25,10 +25,6 @@ final class UpdatePresentationTests: XCTestCase {
                 host.layoutSubtreeIfNeeded()
                 let readyHeight = host.fittingSize.height
                 let before = try snapshot(host)
-                store.dismissUpdate(version: "9.9.10")
-                try await Task.sleep(for: .milliseconds(150))
-                host.layoutSubtreeIfNeeded()
-                XCTAssertEqual(try snapshot(host), before, "Later must not change the visible badge")
 
                 store.isUpdating = true
                 store.updateMessage = language == .en ? "Downloading update…" : "正在下载更新…"
@@ -68,13 +64,41 @@ final class UpdatePresentationTests: XCTestCase {
         }
     }
 
+    func testBadgeVisibilityFollowsShowUpdateBadgeSetting() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-badge-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = ConfigStore(fileURL: root.appendingPathComponent("config.json"))
+        try config.save(AppConfiguration(showUpdateBadge: false))
+        let store = UsageBoardStore(configStore: config, stateStore: PluginStateStore(directoryURL: root.appendingPathComponent("states")))
+        store.availableUpdate = UpdateInfo(latestVersion: "9.9.10", downloadURL: "https://example.com/update.zip")
+        let host = NSHostingView(rootView: OverviewView(store: store, maximumHeight: 600).frame(width: 380))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 400), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+
+        try await Task.sleep(for: .milliseconds(150))
+        host.layoutSubtreeIfNeeded()
+        let hidden = try snapshot(host)
+
+        store.setShowUpdateBadge(true)
+        try await Task.sleep(for: .milliseconds(150))
+        host.layoutSubtreeIfNeeded()
+        XCTAssertNotEqual(try snapshot(host), hidden, "Enabling the setting must render the capsule")
+
+        store.setShowUpdateBadge(false)
+        try await Task.sleep(for: .milliseconds(150))
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(try snapshot(host), hidden, "Disabling the setting must hide the capsule again")
+        await store.flushConfiguration()
+    }
+
     func testUpdatePromptViewLaysOutInBothLanguagesAndAppearances() throws {
         let previous = AppLocalization.shared
         defer { AppLocalization.shared = previous }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-prompt-ui-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let config = ConfigStore(fileURL: root.appendingPathComponent("config.json"))
-        try config.save(AppConfiguration(autoUpdateCheck: false))
+        try config.save(AppConfiguration())
         let store = UsageBoardStore(configStore: config, stateStore: PluginStateStore(directoryURL: root.appendingPathComponent("states")))
         let notes = "1. First change;\n2. Second change;\n3. Third change."
         for language in AppLanguage.allCases {
@@ -124,7 +148,7 @@ final class UpdatePresentationTests: XCTestCase {
         // Automatic checks can replace the result without another present() call.
         store.availableUpdate = second
         staleLater()
-        XCTAssertNil(store.configuration.dismissedUpdateVersion)
+        XCTAssertTrue(panel.isVisible, "A stale Later action must not close the panel showing a newer result")
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(host.rootView.info, second)
         XCTAssertGreaterThan(panel.frame.height, firstHeight, "New notes must fit in the existing panel")
@@ -154,7 +178,6 @@ final class UpdatePresentationTests: XCTestCase {
         XCTAssertFalse(reopened === panel)
         let reopenedHost = try XCTUnwrap(reopened.contentViewController as? NSHostingController<UpdatePromptView>)
         reopenedHost.rootView.onLater()
-        XCTAssertEqual(store.configuration.dismissedUpdateVersion, second.latestVersion)
         XCTAssertFalse(reopened.isVisible)
         await store.flushConfiguration()
     }
@@ -217,7 +240,7 @@ final class UpdatePresentationTests: XCTestCase {
 
     private func makePromptStore(root: URL) throws -> UsageBoardStore {
         let config = ConfigStore(fileURL: root.appendingPathComponent("config.json"))
-        try config.save(AppConfiguration(autoUpdateCheck: false))
+        try config.save(AppConfiguration())
         return UsageBoardStore(
             configStore: config,
             stateStore: PluginStateStore(directoryURL: root.appendingPathComponent("states")),

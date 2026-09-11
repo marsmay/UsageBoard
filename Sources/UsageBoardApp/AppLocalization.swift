@@ -114,8 +114,8 @@ struct AppLocalization {
         case .addPlugin: return "Add plugin"
         case .launchAtLogin: return "Launch at Login"
         case .launchAtLoginHint: return "Launch UsageBoard at login"
-        case .autoUpdateCheck: return "Automatic Updates"
-        case .autoUpdateCheckHint: return "Periodically check for new versions and notify"
+        case .updateBadge: return "New Version Badge"
+        case .updateBadgeHint: return "Show a badge in the popover when an update is available"
         case .displayMode: return "Display Mode"
         case .displayModeHint: return "Show services in groups or tabs"
         case .chartMode: return "Chart Mode"
@@ -188,8 +188,8 @@ struct AppLocalization {
         case .addPlugin: return "添加插件"
         case .launchAtLogin: return "开机启动"
         case .launchAtLoginHint: return "登录时自动启动 UsageBoard"
-        case .autoUpdateCheck: return "自动更新"
-        case .autoUpdateCheckHint: return "定时检查新版本并提示"
+        case .updateBadge: return "新版本提示"
+        case .updateBadgeHint: return "在主界面显示新版本提示"
         case .displayMode: return "显示模式"
         case .displayModeHint: return "按服务分组或通过标签页切换"
         case .chartMode: return "图表模式"
@@ -261,8 +261,8 @@ struct AppLocalization {
         case addPlugin
         case launchAtLogin
         case launchAtLoginHint
-        case autoUpdateCheck
-        case autoUpdateCheckHint
+        case updateBadge
+        case updateBadgeHint
         case displayMode
         case displayModeHint
         case chartMode

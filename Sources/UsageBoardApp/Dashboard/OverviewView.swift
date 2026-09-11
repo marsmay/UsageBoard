@@ -29,7 +29,7 @@ struct OverviewView: View {
                         .font(UB.Font.popoverTitle)
                         .tracking(-0.1)
                     Spacer()
-                    if let info = store.availableUpdate {
+                    if store.configuration.showUpdateBadge, let info = store.availableUpdate {
                         UpdateBadgeButton(info: info, store: store)
                     }
                     Button {

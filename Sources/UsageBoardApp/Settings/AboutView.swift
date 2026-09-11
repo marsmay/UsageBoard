@@ -5,7 +5,6 @@ import UsageBoardCore
 
 struct AboutView: View {
     @ObservedObject var store: UsageBoardStore
-    @State private var isUserChecking = false
     private var strings: AppLocalization {
         .shared
     }
@@ -34,8 +33,9 @@ struct AboutView: View {
                     .padding(.top, 10)
 
                 Button(store.isCheckingForUpdates ? strings.text(.checkingUpdate) : strings.text(.checkForUpdates)) {
-                    isUserChecking = true
-                    store.checkForUpdates()
+                    store.checkForUpdates { info in
+                        UpdatePrompt.present(info: info, store: store)
+                    }
                 }
                 .controlSize(.large)
                 .disabled(store.isCheckingForUpdates || store.isUpdating)
@@ -61,10 +61,5 @@ struct AboutView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: store.availableUpdate) { newValue in
-            guard isUserChecking, let newValue else { return }
-            isUserChecking = false
-            UpdatePrompt.present(info: newValue, store: store)
-        }
     }
 }

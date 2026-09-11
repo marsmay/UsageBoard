@@ -4,7 +4,7 @@ import SwiftUI
 import UsageBoardCore
 
 /// 统一的"发现新版本"提示：图标 + 版本信息 + 更新内容卡片 + 胶囊按钮。
-/// AboutView 手动检查、popover 指示灯胶囊和自动弹出提示共用。
+/// 仅由用户主动触发：点击主界面新版本胶囊，或在关于页手动检查更新。
 /// 非模态浮动面板：不劫持事件循环，下载/安装期间 MainActor 正常工作。
 enum UpdatePrompt {
     @MainActor
@@ -96,8 +96,8 @@ enum UpdatePrompt {
             info: info,
             currentVersion: currentVersion,
             onLater: { [weak panel] in
+                // 结果已被新检查替换时，旧回调不得关闭展示新结果的面板。
                 guard store.availableUpdate == info else { return }
-                store.dismissUpdate(version: info.latestVersion)
                 panel?.close()
             }
         )

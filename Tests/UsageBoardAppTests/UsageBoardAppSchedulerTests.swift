@@ -310,54 +310,6 @@ final class UpdateReminderTests: XCTestCase {
         XCTAssertFalse(store.isCheckingForUpdates)
     }
 
-    func testPendingUpdateHidesAfterDismissAndReappearsForNewerVersion() {
-        let root = makeRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = makeStore(root: root, checker: NoopUpdateChecker())
-
-        store.availableUpdate = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/u.zip")
-        XCTAssertNotNil(store.pendingUpdate)
-
-        store.dismissUpdate(version: "9.9.9")
-        XCTAssertNil(store.pendingUpdate)
-        XCTAssertEqual(store.availableUpdate?.latestVersion, "9.9.9", "Later must retain the manual update entry")
-        XCTAssertEqual(store.configuration.dismissedUpdateVersion, "9.9.9")
-
-        store.availableUpdate = UpdateInfo(latestVersion: "9.9.10", downloadURL: "https://example.com/u.zip")
-        XCTAssertNotNil(store.pendingUpdate, "A newer version must become visible again")
-    }
-
-    func testAutomaticPromptDeduplicatesByVersionAndHonorsLater() {
-        let root = makeRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = makeStore(root: root, checker: NoopUpdateChecker())
-        let first = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/u.zip")
-        let second = UpdateInfo(latestVersion: "9.9.10", downloadURL: "https://example.com/u.zip")
-        store.availableUpdate = first
-        XCTAssertEqual(store.takePendingUpdatePrompt(), first)
-        XCTAssertNil(store.takePendingUpdatePrompt())
-        store.dismissUpdate(version: first.latestVersion)
-        XCTAssertNil(store.takePendingUpdatePrompt())
-
-        store.availableUpdate = second
-        XCTAssertEqual(store.takePendingUpdatePrompt(), second, "A later release must prompt without restarting")
-        XCTAssertNil(store.takePendingUpdatePrompt())
-        store.availableUpdate = first
-        XCTAssertNil(store.takePendingUpdatePrompt())
-    }
-
-    func testUpdateInProgressDoesNotConsumeAutomaticPrompt() {
-        let root = makeRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = makeStore(root: root, checker: NoopUpdateChecker())
-        let info = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/u.zip")
-        store.availableUpdate = info
-        store.isUpdating = true
-        XCTAssertNil(store.takePendingUpdatePrompt())
-        store.isUpdating = false
-        XCTAssertEqual(store.takePendingUpdatePrompt(), info)
-    }
-
     func testAutomaticCheckSuccessSetsUpdateWithoutTouchingMessage() async throws {
         let root = makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -369,7 +321,6 @@ final class UpdateReminderTests: XCTestCase {
         try await waitForCheck(store)
 
         XCTAssertEqual(store.availableUpdate, info)
-        XCTAssertNotNil(store.pendingUpdate)
         XCTAssertEqual(store.updateMessage, "preset", "Automatic checks must stay silent")
     }
 
@@ -398,7 +349,6 @@ final class UpdateReminderTests: XCTestCase {
         try await waitForCheck(store)
 
         XCTAssertNil(store.availableUpdate)
-        XCTAssertNil(store.pendingUpdate)
         XCTAssertNil(store.updateMessage)
     }
 
@@ -414,18 +364,76 @@ final class UpdateReminderTests: XCTestCase {
         XCTAssertNotNil(store.updateMessage)
     }
 
-    func testAutoUpdateCheckDefaultsToEnabledAndIsConfigurable() {
+    func testCompletedManualCheckCannotPromptOnLaterAutomaticSuccess() async throws {
+        let info = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/u.zip")
+        let noUpdate = UpdateCheckResult(info: info, hasUpdate: false)
+        for manualResult: Result<UpdateCheckResult, URLError> in [.success(noUpdate), .failure(URLError(.cannotConnectToHost))] {
+            let root = makeRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let checker = SequencedUpdateChecker(results: [manualResult, .success(UpdateCheckResult(info: info, hasUpdate: true))])
+            let store = makeStore(root: root, checker: checker)
+            store.setShowUpdateBadge(false)
+            var prompts: [UpdateInfo] = []
+            let url = URL(string: "https://example.com/version.json")!
+
+            store.runUpdateCheck(url: url, automatic: false) { prompts.append($0) }
+            try await waitForCheck(store)
+            XCTAssertNil(store.availableUpdate)
+            XCTAssertNotNil(store.updateMessage)
+            XCTAssertTrue(prompts.isEmpty)
+
+            store.runUpdateCheck(url: url, automatic: true)
+            try await waitForCheck(store)
+            XCTAssertEqual(store.availableUpdate, info)
+            XCTAssertTrue(prompts.isEmpty, "Background success must not reuse a completed manual request")
+            await store.flushConfiguration()
+        }
+    }
+
+    func testOnlySuccessfulManualRequestDeliversPrompt() async throws {
+        let root = makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let info = UpdateInfo(latestVersion: "9.9.9", downloadURL: "https://example.com/u.zip")
+        let store = makeStore(root: root, checker: StubUpdateChecker(info: info, hasUpdate: true))
+        let url = URL(string: "https://example.com/version.json")!
+        var prompts: [UpdateInfo] = []
+
+        store.runUpdateCheck(url: url, automatic: false) { result in
+            XCTAssertEqual(store.availableUpdate, result, "Publish the result before requesting presentation")
+            prompts.append(result)
+        }
+        try await waitForCheck(store)
+        XCTAssertEqual(prompts, [info])
+
+        store.runUpdateCheck(url: url, automatic: true) { prompts.append($0) }
+        try await waitForCheck(store)
+        XCTAssertEqual(prompts, [info], "Even an explicit callback must not make a background check prompt")
+    }
+
+    func testShowUpdateBadgeDefaultsToEnabledAndIsConfigurable() {
         let root = makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = makeStore(root: root, checker: NoopUpdateChecker())
 
-        XCTAssertTrue(store.configuration.autoUpdateCheck)
+        XCTAssertTrue(store.configuration.showUpdateBadge)
         XCTAssertNil(store.updateMessage, "Startup automatic check must stay silent without a configured URL")
 
-        store.setAutoUpdateCheck(false)
-        XCTAssertFalse(store.configuration.autoUpdateCheck)
-        store.setAutoUpdateCheck(true)
-        XCTAssertTrue(store.configuration.autoUpdateCheck)
+        store.setShowUpdateBadge(false)
+        XCTAssertFalse(store.configuration.showUpdateBadge)
+        store.setShowUpdateBadge(true)
+        XCTAssertTrue(store.configuration.showUpdateBadge)
+    }
+}
+
+private actor SequencedUpdateChecker: UpdateChecking {
+    private var results: [Result<UpdateCheckResult, URLError>]
+
+    init(results: [Result<UpdateCheckResult, URLError>]) {
+        self.results = results
+    }
+
+    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+        try results.removeFirst().get()
     }
 }
 

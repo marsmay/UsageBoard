@@ -36,7 +36,6 @@ final class UsageBoardStore: ObservableObject {
     private var inflightRefreshTasks: [UUID: Task<Void, Never>] = [:]
     private var schedulerKeys: [UUID: SchedulerKey] = [:]
     private var updateCheckTask: Task<Void, Never>?
-    private var presentedUpdateVersions: Set<String> = []
     private var isSystemActive: Bool = true
     private var systemActivityObservers: [NSObjectProtocol] = []
     private var systemInactiveTimeout: Task<Void, Never>?
@@ -472,45 +471,18 @@ final class UsageBoardStore: ObservableObject {
         return URL(string: string)
     }()
 
-    /// 自动检查间隔：6 小时。
+    /// 自动检查间隔：6 小时，后台始终运行；开关只控制主界面是否显示新版本胶囊。
     private static let updateCheckInterval: TimeInterval = 6 * 3600
 
-    /// 有可用更新且用户未对该版本点过"稍后更新"时返回，仅用于自动提示。
-    var pendingUpdate: UpdateInfo? {
-        guard let availableUpdate,
-              availableUpdate.latestVersion != configuration.dismissedUpdateVersion else { return nil }
-        return availableUpdate
-    }
-
-    /// 每个版本在本次运行中自动提示一次；手动入口始终使用 availableUpdate。
-    func takePendingUpdatePrompt() -> UpdateInfo? {
-        guard !isUpdating, !isCheckingForUpdates, let info = pendingUpdate,
-              presentedUpdateVersions.insert(info.latestVersion).inserted else { return nil }
-        return info
-    }
-
-    func setAutoUpdateCheck(_ enabled: Bool) {
-        guard configuration.autoUpdateCheck != enabled else { return }
-        configuration.autoUpdateCheck = enabled
-        persistConfiguration()
-        if enabled {
-            startUpdateCheckScheduler()
-        } else {
-            updateCheckTask?.cancel()
-            updateCheckTask = nil
-        }
-    }
-
-    /// "稍后更新"：持久化跳过该版本，直到出现更新的版本前不再自动提示。
-    func dismissUpdate(version: String) {
-        guard configuration.dismissedUpdateVersion != version else { return }
-        configuration.dismissedUpdateVersion = version
+    /// 通用设置"新版本提示"开关：控制主界面是否显示新版本胶囊。
+    func setShowUpdateBadge(_ enabled: Bool) {
+        guard configuration.showUpdateBadge != enabled else { return }
+        configuration.showUpdateBadge = enabled
         persistConfiguration()
     }
 
     private func startUpdateCheckScheduler() {
         updateCheckTask?.cancel()
-        guard configuration.autoUpdateCheck else { return }
         updateCheckTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -521,7 +493,7 @@ final class UsageBoardStore: ObservableObject {
     }
 
     /// 自动检查失败保持静默并保留已有结果；手动检查向用户反馈错误。
-    func checkForUpdates(automatic: Bool = false) {
+    func checkForUpdates(automatic: Bool = false, onUpdateAvailable: (@MainActor (UpdateInfo) -> Void)? = nil) {
         guard !isCheckingForUpdates, !isUpdating else { return }
         guard let url = Self.updateCheckURL else {
             if !automatic {
@@ -529,11 +501,11 @@ final class UsageBoardStore: ObservableObject {
             }
             return
         }
-        runUpdateCheck(url: url, automatic: automatic)
+        runUpdateCheck(url: url, automatic: automatic, onUpdateAvailable: onUpdateAvailable)
     }
 
     /// 拆出 URL 注入点便于测试。
-    func runUpdateCheck(url: URL, automatic: Bool) {
+    func runUpdateCheck(url: URL, automatic: Bool, onUpdateAvailable: (@MainActor (UpdateInfo) -> Void)? = nil) {
         if !automatic {
             availableUpdate = nil
             updateMessage = nil
@@ -545,6 +517,11 @@ final class UsageBoardStore: ObservableObject {
                 let result = try await updateChecker.check(currentVersion: currentVersion, url: url)
                 if result.hasUpdate {
                     availableUpdate = result.info
+                    // Only this manual request may open a prompt. Never retain
+                    // that intent for a later background check.
+                    if !automatic {
+                        onUpdateAvailable?(result.info)
+                    }
                 } else {
                     availableUpdate = nil
                     if !automatic {
