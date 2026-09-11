@@ -67,6 +67,41 @@ def translate():
     return plugin.make_translator(plugin.TRANSLATIONS)
 
 
+class TestParseResetTime(unittest.TestCase):
+    def test_z_suffix_kept(self):
+        self.assertEqual(plugin.parse_reset_time("2026-07-24T14:16:52Z"), "2026-07-24T14:16:52Z")
+
+    def test_explicit_offset_kept(self):
+        self.assertEqual(
+            plugin.parse_reset_time("2026-07-24T22:16:52+08:00"),
+            "2026-07-24T22:16:52+08:00",
+        )
+
+    def test_naive_timestamp_omitted(self):
+        # Naive timestamps have no verified timezone; they must be omitted
+        # rather than passed through (Core would reject the whole output).
+        self.assertIsNone(plugin.parse_reset_time("2026-07-24T14:16:52"))
+
+    def test_invalid_and_empty_values_omitted(self):
+        for value in ("not-a-time", "", None, 123, {}):
+            self.assertIsNone(plugin.parse_reset_time(value), repr(value))
+
+    def test_bad_reset_time_does_not_break_other_items(self):
+        payload = {
+            "limits": [
+                {"window": {"duration": 300, "timeUnit": "min"},
+                 "detail": {"limit": "100", "used": "1", "resetTime": "2026-07-17T19:16:52"}}
+            ],
+            "usage": {"limit": "100", "remaining": "40", "resetTime": "2026-07-24T14:16:52Z"},
+        }
+        items, _ = plugin.build_items(payload, "zh-Hans", translate())
+        window = next(item for item in items if item["id"] == "kimi-window-300")
+        weekly = next(item for item in items if item["id"] == "kimi-weekly")
+        self.assertIsNone(window["resetAt"])
+        self.assertEqual(window["used"], 1)
+        self.assertEqual(weekly["resetAt"], "2026-07-24T14:16:52Z")
+
+
 class TestErrorFormat(unittest.TestCase):
     """Error output must use {"error": "message"} format with no items."""
 

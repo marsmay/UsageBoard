@@ -86,7 +86,7 @@ CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credit
 CREDITS_TIMEOUT_SECONDS = 2.0
 # Leave time to serialize stdout before PluginExecutor's 15-second deadline.
 CREDITS_DEADLINE_SECONDS = 12.0
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 
 TRANSLATIONS = {
@@ -465,9 +465,18 @@ def parse_sessions_for_chart(
                 model_totals[model] = model_totals.get(model, 0) + delta
 
         try:
-            with open(filepath, encoding="utf-8") as fh:
-                for line in fh:
-                    if '"turn_context"' not in line and '"token_count"' not in line:
+            # Read raw bytes and decode per line: one corrupted line must not
+            # abort the rest of the file, and undecodable lines are skipped
+            # whole so damaged numbers or model names are never repaired into
+            # fabricated values. UTF-8 continuation bytes never contain 0x0A,
+            # so splitting on b"\n" cannot split a multi-byte character.
+            with open(filepath, "rb") as fh:
+                for raw_line in fh:
+                    if b'"turn_context"' not in raw_line and b'"token_count"' not in raw_line:
+                        continue
+                    try:
+                        line = raw_line.decode("utf-8")
+                    except UnicodeDecodeError:
                         continue
                     try:
                         event = json.loads(line)
@@ -516,7 +525,7 @@ def parse_sessions_for_chart(
                             pending.append((key, delta))
                         else:
                             apply_entry(key, delta)
-        except (OSError, UnicodeDecodeError):
+        except OSError:
             continue
 
         if pending:

@@ -145,7 +145,7 @@ class TestChartCache(unittest.TestCase):
         self.assertEqual(daily[plugin._format_date(yesterday)], {"old-model": 3})
         self.assertEqual(daily[plugin._format_date(today)], {"glm-4.5": 9})
 
-    def test_stale_cache_fetches_only_missing_dates(self):
+    def test_stale_cache_refetches_last_cached_date(self):
         api_key = "fake-key"
         today = plugin.datetime.now().astimezone().date()
         last_date = today - timedelta(days=3)
@@ -153,7 +153,10 @@ class TestChartCache(unittest.TestCase):
 
         def fake_fetch(_api_key, start_time, end_time):
             calls.append((start_time, end_time))
-            return self.payload([plugin._format_date(today)], [5])
+            return self.payload(
+                [plugin._format_date(last_date), plugin._format_date(today)],
+                [20, 5],
+            )
 
         with tempfile.TemporaryDirectory() as cache_dir:
             plugin.save_chart_cache(api_key, {
@@ -168,10 +171,103 @@ class TestChartCache(unittest.TestCase):
                 daily = plugin.maintain_chart_cache(api_key, "zh-Hans", cache_dir=cache_dir)
 
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][0].date(), last_date + timedelta(days=1))
+        self.assertEqual(calls[0][0].date(), last_date)
         self.assertEqual(calls[0][1].date(), today)
-        self.assertEqual(daily[plugin._format_date(last_date)], {"old-model": 7})
+        # The partially cached last day is replaced, not merged with old values.
+        self.assertEqual(daily[plugin._format_date(last_date)], {"glm-4.5": 20})
         self.assertEqual(daily[plugin._format_date(today)], {"glm-4.5": 5})
+
+    def test_refetch_with_empty_response_clears_old_day_values(self):
+        api_key = "fake-key"
+        today = plugin.datetime.now().astimezone().date()
+        last_date = today - timedelta(days=1)
+
+        def fake_fetch(_api_key, start_time, end_time):
+            return {"data": {"x_time": [], "modelDataList": []}}
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            plugin.save_chart_cache(api_key, {
+                "version": plugin.CACHE_VERSION,
+                "last_date": plugin._format_date(last_date),
+                "days": {
+                    plugin._format_date(last_date): {"old-model": 7},
+                },
+            }, cache_dir=cache_dir)
+
+            with patch.object(plugin, "fetch_model_usage", side_effect=fake_fetch):
+                daily = plugin.maintain_chart_cache(api_key, "zh-Hans", cache_dir=cache_dir)
+
+        self.assertEqual(daily[plugin._format_date(last_date)], {})
+        self.assertEqual(daily[plugin._format_date(today)], {})
+
+    def test_outdated_cache_version_triggers_full_fetch(self):
+        api_key = "fake-key"
+        today = plugin.datetime.now().astimezone().date()
+        yesterday = today - timedelta(days=1)
+        calls = []
+
+        def fake_fetch(_api_key, start_time, end_time):
+            calls.append((start_time, end_time))
+            return self.payload([end_time.strftime("%Y-%m-%d")], [11])
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            plugin.save_chart_cache(api_key, {
+                "version": plugin.CACHE_VERSION - 1,
+                "last_date": str(today),
+                "days": {str(yesterday): {"old-model": 99}},
+            }, cache_dir=cache_dir)
+
+            with patch.object(plugin, "fetch_model_usage", side_effect=fake_fetch):
+                daily = plugin.maintain_chart_cache(api_key, "zh-Hans", cache_dir=cache_dir)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual((calls[0][1].date() - calls[0][0].date()).days, 29)
+        self.assertEqual(daily[str(yesterday)], {})
+
+    def test_current_version_cache_discards_dates_outside_window(self):
+        today = plugin.datetime.now().astimezone().date()
+        expired = today - timedelta(days=30)
+        cutoff = today - timedelta(days=29)
+        with tempfile.TemporaryDirectory() as cache_dir:
+            plugin.save_chart_cache("fake-key", {
+                "version": plugin.CACHE_VERSION,
+                "last_date": str(today),
+                "days": {str(expired): {"model": 99}, str(cutoff): {"model": 7}},
+            }, cache_dir=cache_dir)
+            with patch.object(plugin, "fetch_model_usage", return_value=self.payload([str(today)], [3])):
+                daily = plugin.maintain_chart_cache("fake-key", "en", cache_dir=cache_dir)
+        self.assertNotIn(str(expired), daily)
+        self.assertEqual(daily[str(cutoff)], {"model": 7})
+
+    def test_new_cache_resumes_incremental_after_full_fetch(self):
+        api_key = "fake-key"
+        today = plugin.datetime.now().astimezone().date()
+
+        def fake_fetch(_api_key, start_time, end_time):
+            calls.append((start_time, end_time))
+            return self.payload([end_time.strftime("%Y-%m-%d")], [3])
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            plugin.save_chart_cache(api_key, {
+                "version": plugin.CACHE_VERSION - 1,
+                "last_date": "2000-01-01",
+                "days": {},
+            }, cache_dir=cache_dir)
+
+            calls = []
+            with patch.object(plugin, "fetch_model_usage", side_effect=fake_fetch):
+                plugin.maintain_chart_cache(api_key, "zh-Hans", cache_dir=cache_dir)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual((calls[0][1].date() - calls[0][0].date()).days, 29)
+
+            calls.clear()
+            with patch.object(plugin, "fetch_model_usage", side_effect=fake_fetch):
+                daily = plugin.maintain_chart_cache(api_key, "zh-Hans", cache_dir=cache_dir)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0].date(), today)
+        self.assertEqual(calls[0][1].date(), today)
+        self.assertEqual(daily[plugin._format_date(today)], {"glm-4.5": 3})
 
 
 if __name__ == "__main__":

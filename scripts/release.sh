@@ -40,6 +40,8 @@ else
 fi
 
 echo "版本: $CURRENT_VERSION → $NEW_VERSION"
+# build 号规则与 InTime 一致：UTC %y%j%H%M（年+年积日+时+分），单调递增
+APP_BUILD="${APP_BUILD:-$(TZ=UTC date +%y%j%H%M)}"
 
 # --- Release notes ---
 git fetch --tags -q 2>/dev/null || true
@@ -52,16 +54,15 @@ else
     RAW_NOTES=""
 fi
 # Escape newlines for JSON
-NOTES=$(echo "$RAW_NOTES" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().strip())[1:-1])')
-
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST"
-# build 号规则与 InTime 一致：UTC %y%j%H%M（年+年积日+时+分），单调递增
-APP_BUILD="${APP_BUILD:-$(TZ=UTC date +%y%j%H%M)}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD" "$PLIST"
+NOTES=$(printf '%s' "$RAW_NOTES" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().strip())[1:-1])')
 
 # --- Build ---
 echo "构建 release..."
 swift build -c release
+
+# 构建成功后再写入目标版本，避免构建失败留下新版本号 + 旧二进制
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD" "$PLIST"
 
 # --- Copy binary & plugins ---
 echo "打包 app..."

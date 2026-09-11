@@ -460,7 +460,12 @@ def main():
 
     try:
         items = build_items_from_oauth(oauth_data, lang, translate)
-        badge = str(oauth_data.get("plan_type", params.get("PLAN", "pro"))).capitalize()
+        plan_type = oauth_data.get("plan_type")
+        if not isinstance(plan_type, str) or not plan_type.strip():
+            # Missing/null/empty server plan falls back to the configured PLAN,
+            # then to the default plan.
+            plan_type = (params.get("PLAN") or "").strip() or "pro"
+        badge = plan_type.strip().capitalize()
     except Exception:
         failure(translate(lang, "usage_parse_failed"))
         return

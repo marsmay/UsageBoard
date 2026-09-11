@@ -113,6 +113,10 @@ def parse_reset_time(value: Any) -> str | None:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if dt.tzinfo is None:
+        # The timezone of naive API timestamps is unverified, and Core rejects
+        # offset-less timestamps outright; omit rather than guess a timezone.
+        return None
     return dt.isoformat().replace("+00:00", "Z")
 
 

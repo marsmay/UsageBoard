@@ -191,11 +191,16 @@ def main() -> int:
         return failure(translate(language, "network_error"))
 
     try:
-        status_code = payload.get("base_resp", {}).get("status_code", 0)
+        base_resp = payload.get("base_resp", {})
+        # Preserve the existing missing-field behavior, but do not interpret
+        # an explicit null or another unknown response shape as success.
+        if not isinstance(base_resp, dict):
+            return failure(translate(language, "usage_parse_failed"))
+        status_code = base_resp.get("status_code", 0)
         if status_code != 0:
             if status_code == 2049:
                 return failure(translate(language, "invalid_api_key"))
-            status_msg = payload.get("base_resp", {}).get("status_msg", "")
+            status_msg = base_resp.get("status_msg", "")
             return failure(f"{status_msg} ({status_code})" if status_msg else str(status_code))
         items = build_items(payload, language, translate)
     except Exception:

@@ -86,6 +86,8 @@ UsageBoard 默认使用：
 
 `icon` 也兼容 HTTP(S) URL、绝对文件路径和 `file://` URL。相对路径以 app 的 `Contents/Resources/` 为根，开发运行时以当前工作目录的 `Resources/` 为根；`icons/light/` 路径在深色主题下优先加载同名 `icons/dark/` 文件，缺失时回退 light，加载失败时显示名称首字母占位。
 
+远程图标限制为 2 MiB、10 秒无进展超时和 20 秒总时限；超量或失败保留占位图。这不是解码后像素内存上限。
+
 ## 配置文件
 
 主配置 JSON 当前结构：
@@ -148,7 +150,7 @@ UsageBoard 默认使用：
 说明：
 
 - `overviewDisplayMode` 支持 `grouped` 和 `tabs`。
-- `chartMode` 支持 `line` 和 `bar`。
+- `chartMode` 支持 `line` 和 `bar`，旧配置缺失该字段时回退到 `line`。
 - `theme` 支持 `light`、`dark` 和 `system`，默认跟随系统；在通用设置中切换后立即作用于设置窗口和菜单面板，并持久保存。旧配置缺失此字段时按 `system` 处理。
 - `language` 支持 `zh-Hans` 和 `en`，修改后重启生效。
 - `launchAtLogin` 控制开机启动。
@@ -254,6 +256,8 @@ if __name__ == "__main__":
 
 UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans` 或 `--usageboard-param USAGEBOARD_LANGUAGE=en`。脚本应读取这个保留参数，并直接返回对应语言的展示文本。
 
+插件默认执行超时 15 秒，stdout 上限 8 MiB。运行结束（含父进程正常退出）后，受确认插件进程组中的后代会收到 SIGTERM，并获得最多 1 秒清理时间，仍存活时再收到 SIGKILL。插件不能依赖后代在本次运行后继续执行。
+
 ### 返回数据格式
 
 ```json
@@ -299,24 +303,15 @@ UsageBoard 会额外传入当前 app 语言参数：`--usageboard-param USAGEBOA
 }
 ```
 
-字段说明：
+主要字段摘要（完整协议和字段细节见 [插件编写说明](Resources/PluginAuthoringGuide.html)）：
 
-- `updatedAt`：插件数据更新时间，ISO 8601 格式。
-- `items[].id`：用量项目稳定 ID。
-- `items[].name`：界面显示名称。
-- `items[].used` / `items[].limit`：已用量和总额度。
-- `items[].displayStyle`：`percent` 显示百分比，`ratio` 显示数字占比。
-- `items[].resetAt`：可选重置时间，ISO 8601 格式。
-- `items[].status`：`normal`、`warning`、`critical`、`unknown`；该字段不控制进度条颜色，也不表示整个插件执行失败。
-- `items[].color`：可选进度条颜色，支持 `blue`、`yellow`、`orange`、`red`、`green`；未指定或无法识别时按进度切色：<60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红。
-- `badge`：可选字符串，显示在插件卡片标题旁的圆角徽章中（大写加粗文字，前景色配同色淡背景）。
-- `badgeColor`：可选字符串，徽标颜色，支持 `blue`、`orange`、`gray`、`indigo`、`purple`、`teal`、`green`、`red`、`yellow`；缺省时按 `badge` 文字匹配预设档位（如 PRO/MAX）。
-- `chart`：可选 token 统计图，使用 `kind: "line"` 的数据结构；实际折线/直方图展示由全局 `chartMode` 决定。
-- `chart.period`：统计周期标识，例如 `7d`、`15d`、`30d`。
-- `chart.bucketUnit`：时间桶单位，支持 `hour` 或 `day`。
-- `chart.buckets[].segments[]`：每个时间桶的模型分段，包含 `model` 和 `tokens`。
-- `chart.message`：可选提示文案，统计数据为空或不可用时显示。
-- `error`：可选顶层错误信息；存在且非空时，该插件本次运行会被视为失败，错误文本显示在卡片内容区。
+- `updatedAt` 与 `items[]`：必填；`items[]` 的 `used`/`limit`/`displayStyle`（`percent` 或 `ratio`）/`resetAt`/`status`/`color` 控制用量行展示，进度条颜色未指定时按进度切色（<60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红）。
+- `badge` / `badgeColor`：可选卡片标题徽章；`badgeColor` 支持 `blue`、`orange`、`gray`（或 `grey`）、`indigo`、`purple`、`teal`、`green`、`red`、`yellow`，缺省时按 `badge` 文字匹配预设档位（如 PRO/MAX）。
+- `credits`：可选配额重置卡数组（如 Codex 的 rate-limit reset），只应包含当前可用的卡，查询失败时省略该字段，不影响其他数据。
+- `chart`：可选 token 统计图，使用 `kind: "line"` 的数据结构按时间桶给出模型分段；实际折线/直方图展示由全局 `chartMode` 决定，数据为空时可提供 `chart.message` 提示文案。
+- `error`：可选顶层错误信息；存在且非空时，该插件本次运行被视为失败，错误文本显示在卡片内容区。
+
+GLM 与 Codex 图表缓存版本 2 会在升级旧缓存时一次性重建近 30 天数据，然后恢复增量更新。Codex 整行跳过无效 UTF-8 数据并继续读取后续有效事件；Claude 空套餐名回退配置套餐再到 pro；Kimi 省略时区不明的重置时间；MiniMax 对显式 null 或非对象的 `base_resp` 返回解析失败，缺失字段维持原有兼容行为。
 
 内置智谱、Claude 和 Codex 插件提供 `STAT_PERIOD` 参数，支持 `none`（无）、`7d`、`15d`、`30d`，选择无则关闭本地统计。智谱插件统一使用国内站 API 查询，兼容智谱和 ZAI 的 Coding Plan Key。Claude 插件通过 OAuth API 获取订阅用量，`PLAN` 参数支持 `none`（无）选项，选择后跳过 API 调用仅返回本地 JSONL 统计数据；订阅计划和统计周期均选无时插件不再返回有效数据，主程序会自动隐藏对应卡片，后台刷新期间保持隐藏，失败时显示错误；本地 token 统计直接按 input、output、cache creation 和 cache read 的实际消耗总和计算，还支持 `CLAUDE_ONLY` 开关过滤第三方模型，并可通过 `DATA_DIR` 指定 `~/.claude` 数据目录。Codex 插件通过独立的 `AUTH_FILE` 参数读取认证文件（默认 `~/.codex/auth.json`），通过 `DATA_DIR` 指定会话统计目录（默认 `~/.codex`）。修改统计目录不会自动改变认证文件路径。Claude 和 Codex 插件使用增量缓存策略，缓存存放在数据目录中；每次运行重扫最后一个已缓存日及之后的数据。Claude、Codex 与智谱共享原子缓存读写，写入失败时保留之前的完整缓存。DeepSeek 插件提供 `LIMIT` 参数用于设置余额展示上限，并按余额占上限比例显示进度条颜色。Codex 插件还会列出账号当前可用的额度重置卡，默认以单行显示数量和最近到期信息，点击展开后以每排两张的卡片查看到期时间和剩余天数，查询最多额外等待 2 秒，并受插件整体剩余时间预算限制；超时或失败时省略重置卡，不影响用量显示。Kimi 插件查询 Kimi Code 的 5 小时滚动窗口和周用量，并根据接口返回的会员等级自动显示对应订阅计划；未知等级不显示计划徽标。
 
@@ -395,9 +390,9 @@ bash scripts/release.sh <version> "<release notes>"
 发布脚本会：
 
 1. 从 `dist/UsageBoard.app/Contents/Info.plist` 读取当前版本。
-2. 使用指定版本，或将该本地版本的 patch 加一（bundle 不存在时从 0.1.0 初始化）。
+2. 使用指定版本，或将该本地版本的 patch 加一（bundle 不存在时从 0.1.0 初始化，因此首次自动发布为 0.1.1）。
 3. 自动从上个 release tag 到 HEAD 的提交生成更新说明（也可通过第二个参数手动传入）。
-4. 构建 release。
+4. 构建 release，成功后再写入目标版本及 build 号；构建失败保留已有 bundle 版本和二进制。
 5. 复制二进制、内置插件、帮助文档和图标。
 6. 通过 PlistBuddy 向 Info.plist 注入更新检查 URL。
 7. 重新签名并验证 app。
@@ -413,6 +408,8 @@ bash scripts/release.sh <version> "<release notes>"
 - `dist/UsageBoard-<version>.zip`
 - `dist/version.json`
 
+更新 ZIP 下载限制为 64 MiB、60 秒无进展超时和 300 秒总时限，失败或取消会清理临时 ZIP。该限制不包含解压配额或发布者认证，现有 ad-hoc 签名流程保持不变。
+
 ## 项目结构
 
 ```text
@@ -423,9 +420,11 @@ Tests/
   UsageBoardTests/      Core XCTest
   UsageBoardAppTests/   Store、主题、语言、图标与布局 XCTest
   PluginTests/          Python 插件测试
+  ScriptTests/          隔离的发布脚本测试
 Resources/
   BundledPlugins/       内置 Python 插件
   icons/                插件 light/dark 本地图标
+  IconSources/          保留的图标源素材
   PluginAuthoringGuide.html
   UsageBoard.icns
 scripts/

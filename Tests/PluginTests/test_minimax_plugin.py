@@ -1,12 +1,16 @@
 """Tests for minimax-usage-plugin.py across supported Python interpreters."""
 
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 
 PLUGIN_PATH = Path(__file__).parent.parent.parent / "Resources" / "BundledPlugins" / "minimax-usage-plugin.py"
@@ -127,6 +131,77 @@ class TestMiniMaxInterpreterCompatibility(unittest.TestCase):
                 self.assertEqual(first["status"], "normal")
                 self.assertIn(".", first["resetAt"])
                 self.assertTrue(first["resetAt"].endswith("Z"))
+
+
+def load_plugin():
+    plugin_dir = str(PLUGIN_PATH.parent)
+    if plugin_dir not in sys.path:
+        sys.path.insert(0, plugin_dir)
+    spec = importlib.util.spec_from_file_location("minimax_plugin_main", PLUGIN_PATH)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+VALID_REMAINS = {
+    "model_remains": [
+        {
+            "model_name": "general",
+            "start_time": 0,
+            "end_time": 5 * 60 * 60 * 1000,
+            "remains_time": 1,
+            "weekly_start_time": 0,
+            "weekly_end_time": 7 * 24 * 60 * 60 * 1000,
+            "weekly_remains_time": 2,
+            "current_interval_remaining_percent": 98,
+            "current_weekly_remaining_percent": 99,
+        },
+    ],
+}
+
+
+class TestBaseRespHandling(unittest.TestCase):
+    plugin = load_plugin()
+
+    def _run_main(self, payload):
+        argv = ["minimax-usage-plugin.py", "--usageboard-param", "API_KEY=fake"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(self.plugin, "fetch_remains", return_value=payload), \
+             patch("sys.stdout", new_callable=StringIO) as out:
+            self.plugin.main()
+        return json.loads(out.getvalue())
+
+    def test_success_with_base_resp(self):
+        output = self._run_main({"base_resp": {"status_code": 0}, **VALID_REMAINS})
+        self.assertNotIn("error", output)
+        self.assertEqual(len(output["items"]), 2)
+
+    def test_null_base_resp_with_usage_is_parse_failure(self):
+        output = self._run_main({"base_resp": None, **VALID_REMAINS})
+        self.assertIn("error", output)
+
+    def test_missing_base_resp_with_usage_succeeds(self):
+        output = self._run_main(dict(VALID_REMAINS))
+        self.assertNotIn("error", output)
+        self.assertEqual(len(output["items"]), 2)
+
+    def test_null_base_resp_without_usage_is_not_fake_success(self):
+        output = self._run_main({"base_resp": None})
+        self.assertIn("error", output)
+
+    def test_error_code_2049_reports_invalid_key(self):
+        output = self._run_main({"base_resp": {"status_code": 2049}, **VALID_REMAINS})
+        self.assertIn("error", output)
+
+    def test_error_code_with_message(self):
+        output = self._run_main(
+            {"base_resp": {"status_code": 1002, "status_msg": "rate limited"}, **VALID_REMAINS}
+        )
+        self.assertEqual(output["error"], "rate limited (1002)")
+
+    def test_non_dict_base_resp_is_parse_failure(self):
+        output = self._run_main({"base_resp": "oops", **VALID_REMAINS})
+        self.assertIn("error", output)
 
 
 if __name__ == "__main__":

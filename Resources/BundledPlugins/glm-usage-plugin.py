@@ -68,7 +68,7 @@ from _common import (  # noqa: E402
 
 QUOTA_ENDPOINT = "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
 MODEL_USAGE_ENDPOINT = "https://bigmodel.cn/api/monitor/usage/model-usage"
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 CACHE_FILENAME_PREFIX = "glm-usage-chart-cache"
 DEFAULT_CACHE_DIR = "~/Library/Application Support/UsageBoard/plugin-caches"
 
@@ -476,8 +476,10 @@ def maintain_chart_cache(
     if gap_days < 0 or gap_days > 30:
         return full_fetch_and_save()
 
-    # Today is always dirty, so refresh it even when the cache is already current.
-    scan_start = today if gap_days == 0 else last_date + timedelta(days=1)
+    # Today is always dirty; the last cached day may also be incomplete because
+    # it was captured mid-day, so cross-day scans refetch from last_date and
+    # replace those entries instead of keeping the partial values.
+    scan_start = max(cutoff, last_date)
     new_days = fetch_range(scan_start, today)
 
     merged: dict[str, dict[str, float]] = {}

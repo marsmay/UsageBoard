@@ -37,12 +37,35 @@ public struct DownloadedUpdate: Equatable, Sendable {
 }
 
 public struct UpdateDownloader: Sendable {
-    public init() {}
+    /// Current release zips are ~2.2 MB; the cap leaves wide headroom without
+    /// letting a hostile or broken server stream unbounded data.
+    public static let defaultMaxDownloadBytes: Int64 = 64 * 1024 * 1024
+
+    private let maxDownloadBytes: Int64
+    private let makeConfiguration: @Sendable () -> URLSessionConfiguration
+
+    public init(maxDownloadBytes: Int64 = UpdateDownloader.defaultMaxDownloadBytes) {
+        self.init(maxDownloadBytes: maxDownloadBytes) {
+            let config = URLSessionConfiguration.ephemeral
+            config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            config.timeoutIntervalForRequest = 60
+            config.timeoutIntervalForResource = 300
+            return config
+        }
+    }
+
+    init(maxDownloadBytes: Int64, makeConfiguration: @escaping @Sendable () -> URLSessionConfiguration) {
+        self.maxDownloadBytes = maxDownloadBytes
+        self.makeConfiguration = makeConfiguration
+    }
 
     public func download(from url: URL, expectedVersion: String? = nil) async throws -> DownloadedUpdate {
         try UpdateChecker.validateURL(url)
-        let (tempURL, response) = try await URLSession.shared.download(from: url)
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usageboard-download-\(UUID().uuidString).zip")
         defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let response = try await downloadBody(from: url, to: tempURL)
         try UpdateChecker.validateResponse(response)
 
         let extractDir = FileManager.default.temporaryDirectory
@@ -73,6 +96,22 @@ public struct UpdateDownloader: Sendable {
         return DownloadedUpdate(appURL: appURL, cleanupDirectoryURL: extractDir)
     }
 
+    /// Streams the body to `destination`, enforcing `maxDownloadBytes` while
+    /// bytes arrive (not just via Content-Length) and the session's total
+    /// time budget. Over-limit, timed-out, or cancelled transfers fail before
+    /// any extraction is attempted.
+    private func downloadBody(from url: URL, to destination: URL) async throws -> URLResponse {
+        let delegate = LimitedDownloadDelegate(maxBytes: maxDownloadBytes, destinationURL: destination)
+        let session = URLSession(configuration: makeConfiguration(), delegate: delegate, delegateQueue: nil)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                delegate.start(continuation: continuation, session: session, url: url)
+            }
+        } onCancel: {
+            delegate.cancel()
+        }
+    }
+
     static func validateApp(at url: URL, expectedVersion: String?) throws {
         guard url.lastPathComponent == "UsageBoard.app",
               (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
@@ -93,12 +132,105 @@ public struct UpdateDownloader: Sendable {
 public enum UpdateError: Error, LocalizedError {
     case extractionFailed
     case invalidApplication
+    case downloadTooLarge
 
     public var errorDescription: String? {
         switch self {
         case .extractionFailed: return "更新包解压失败"
         case .invalidApplication: return "更新包中的应用标识、版本或可执行文件无效"
+        case .downloadTooLarge: return "更新包体积超过下载限制"
         }
+    }
+}
+
+/// Download delegate that aborts the transfer as soon as the received (or
+/// declared) byte count exceeds the limit. Retains its session until the task
+/// completes so the transfer cannot be deallocated mid-flight.
+private final class LimitedDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let maxBytes: Int64
+    private let destinationURL: URL
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URLResponse, Error>?
+    private var task: URLSessionDownloadTask?
+    private var session: URLSession?
+    private var didExceedLimit = false
+    private var cancelRequested = false
+
+    init(maxBytes: Int64, destinationURL: URL) {
+        self.maxBytes = maxBytes
+        self.destinationURL = destinationURL
+    }
+
+    func start(continuation: CheckedContinuation<URLResponse, Error>, session: URLSession, url: URL) {
+        let task = session.downloadTask(with: url)
+        lock.lock()
+        self.continuation = continuation
+        self.session = session
+        self.task = task
+        let cancelRequested = self.cancelRequested
+        lock.unlock()
+        if cancelRequested {
+            task.cancel()
+        } else {
+            task.resume()
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelRequested = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        // totalBytesExpectedToWrite is -1 when the server does not declare a
+        // length, so the running total is the enforcement that always applies.
+        guard totalBytesWritten > maxBytes || totalBytesExpectedToWrite > maxBytes else { return }
+        lock.lock()
+        didExceedLimit = true
+        lock.unlock()
+        downloadTask.cancel()
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {
+        do {
+            // The system deletes `location` when this method returns.
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+            if let response = downloadTask.response {
+                finish(.success(response))
+            } else {
+                finish(.failure(URLError(.badServerResponse)))
+            }
+        } catch {
+            finish(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error {
+            lock.lock()
+            let exceeded = didExceedLimit
+            lock.unlock()
+            finish(.failure(exceeded ? UpdateError.downloadTooLarge : error))
+        }
+        session.finishTasksAndInvalidate()
+        lock.lock()
+        self.session = nil
+        self.task = nil
+        lock.unlock()
+    }
+
+    private func finish(_ result: Result<URLResponse, Error>) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
     }
 }
 

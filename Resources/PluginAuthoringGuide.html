@@ -174,7 +174,7 @@
       </tr>
       <tr>
         <td><code>icon</code></td>
-        <td>可选。支持 HTTP(S) URL、绝对文件路径、file:// URL 或 app 资源相对路径（如 <code>icons/light/kimi.png</code>）。相对路径以 app 的 Contents/Resources/ 为根，开发运行时以当前工作目录的 Resources/ 为根。深色主题优先使用同名 icons/dark/ 文件，缺失时回退 light。图片按实际 URL 缓存；未设置或加载失败时显示名称首字母占位。</td>
+        <td>可选。支持 HTTP(S) URL、绝对文件路径、file:// URL 或 app 资源相对路径（如 <code>icons/light/kimi.png</code>）。相对路径以 app 的 Contents/Resources/ 为根，开发运行时以当前工作目录的 Resources/ 为根。深色主题优先使用同名 icons/dark/ 文件，缺失时回退 light。图片按实际 URL 缓存；未设置或加载失败时显示名称首字母占位。远程下载上限为 2 MiB，无进展超时 10 秒、总时限 20 秒；超量时保留占位图。该限制不约束本地文件或解码后的像素内存。</td>
       </tr>
       <tr>
         <td><code>description</code></td>
@@ -256,6 +256,7 @@ api_key = params.get("API_KEY", "")</code></pre>
 
   <h2>返回数据格式</h2>
   <p>默认执行超时为 15 秒；stdout 上限为 8 MiB，stderr 最多保留 64 KiB。超时、取消或 stdout 超限会终止插件进程；Python 执行禁用字节码缓存，避免修改 app 包。退出码非 0 时优先显示 stderr 或退出码错误；退出码为 0 时，非空顶层 <code>error</code> 优先视为失败，即使同时返回成功字段。成功对象必须提供 <code>updatedAt</code> 和 <code>items</code>。</p>
+  <p>启动后确认插件是独立进程组首领时，终止会向整组发送 SIGTERM，并保留最多 1 秒清理时间，再向仍存活成员发送 SIGKILL；父进程提前退出不会缩短后代的清理时间。正常退出后仍存活的同组后代也会清理，因此插件不能依赖后代在本次运行后继续执行。未确认独立组时只处理直接进程，自行脱离组的后代不在清理保证内。</p>
 
   <pre><code>{
   "updatedAt": "2026-04-29T00:00:00Z",
@@ -345,7 +346,7 @@ api_key = params.get("API_KEY", "")</code></pre>
   <p><code>badge</code> 是卡片标题旁的大写套餐名；<code>badgeColor</code> 支持 blue、orange、gray（或 grey）、indigo、purple、teal、green、red、yellow，显示同色文字和淡背景。未指定或无法识别时按 PRO、PLUS、TEAM、FREE、MAX 等套餐预设匹配。</p>
 
   <h3>可选重置卡字段</h3>
-  <p>顶层 <code>credits</code> 数组用于在用量项目下方展示可囤用的配额重置卡（如 Codex 的 rate-limit reset）。只应包含当前可用的卡，已使用或已过期的卡由插件侧过滤；查询失败时应直接省略该字段，不影响其他数据。重置卡区块默认收起为一行（数量和最近到期摘要），点击展开为按到期时间排序的两列卡片；每张卡显示剩余天数和到期时间，卡片底色与圆点按剩余有效期着色（14 天以上绿、7 至 14 天橙、7 天以内红、已过期或无到期时间灰）。</p>
+  <p>顶层 <code>credits</code> 数组用于在用量项目下方展示可囤用的配额重置卡（如 Codex 的 rate-limit reset）。只应包含当前可用的卡，已使用或已过期的卡由插件侧过滤；查询失败时应直接省略该字段，不影响其他数据。重置卡区块默认收起为一行（数量和最近到期摘要），点击展开为按到期时间排序的两列卡片；每张卡显示剩余天数和到期时间，卡片底色与圆点按剩余有效期着色（满 14 天及以上绿、7 至不足 14 天橙、超过 0 至不足 7 天红；已过期或无到期时间灰）。</p>
   <table>
     <thead>
       <tr>

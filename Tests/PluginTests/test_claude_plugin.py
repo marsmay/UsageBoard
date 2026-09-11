@@ -61,6 +61,54 @@ class TestPlanAndStatsNone(unittest.TestCase):
         cache_mock.assert_called_once()
 
 
+class TestBadgePlanFallback(unittest.TestCase):
+    def _run_main(self, params, oauth_data):
+        argv = ["claude", "--usageboard-param", "STAT_PERIOD=none"]
+        for key, value in params:
+            argv += ["--usageboard-param", f"{key}={value}"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(plugin, "load_oauth_token", return_value="token"), \
+             patch.object(plugin, "fetch_oauth_usage", return_value=(oauth_data, 200)), \
+             patch("sys.stdout", new_callable=StringIO) as out:
+            plugin.main()
+        return json.loads(out.getvalue())
+
+    def test_valid_server_plan_type_wins(self):
+        output = self._run_main([("PLAN", "pro")], {"plan_type": "max"})
+
+        self.assertEqual(output["badge"], "Max")
+
+    def test_null_plan_type_falls_back_to_configured_plan(self):
+        output = self._run_main([("PLAN", "max")], {"plan_type": None})
+
+        self.assertEqual(output["badge"], "Max")
+
+    def test_missing_plan_type_falls_back_to_configured_plan(self):
+        output = self._run_main([("PLAN", "max")], {"five_hour": {"utilization": 10}})
+
+        self.assertEqual(output["badge"], "Max")
+
+    def test_empty_plan_type_falls_back_to_configured_plan(self):
+        output = self._run_main([("PLAN", "max")], {"plan_type": "  "})
+
+        self.assertEqual(output["badge"], "Max")
+
+    def test_null_plan_type_without_plan_param_falls_back_to_default(self):
+        output = self._run_main([], {"plan_type": None})
+
+        self.assertEqual(output["badge"], "Pro")
+
+    def test_null_plan_type_with_empty_plan_param_falls_back_to_default(self):
+        output = self._run_main([("PLAN", "")], {"plan_type": None})
+
+        self.assertEqual(output["badge"], "Pro")
+
+    def test_null_plan_type_with_whitespace_plan_falls_back_to_default(self):
+        output = self._run_main([("PLAN", "  ")], {"plan_type": None})
+
+        self.assertEqual(output["badge"], "Pro")
+
+
 class TestTranslateSignature(unittest.TestCase):
     """translate(language, key) — language first, key second (matches all other plugins)."""
 

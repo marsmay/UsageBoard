@@ -283,6 +283,33 @@ class TestCollectSessionFiles(unittest.TestCase):
 
 
 class TestChartCacheRecovery(unittest.TestCase):
+    def test_old_cache_rebuilds_corrupted_history_then_resumes_incremental(self):
+        today = datetime.now().astimezone()
+        old_day = today.date() - timedelta(days=2)
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions = Path(tmp) / "sessions"
+            sessions.mkdir()
+            session = sessions / f"rollout-{old_day}T12-00-00-test.jsonl"
+            context = {"type": "turn_context", "payload": {"model": "test-model"}}
+            event = {
+                "type": "event_msg",
+                "timestamp": datetime.combine(old_day, time(12), tzinfo=today.tzinfo).isoformat(),
+                "payload": {"type": "token_count", "info": {"total_token_usage": {"total_tokens": 180}}},
+            }
+            session.write_bytes(json.dumps(context).encode() + b"\n\xff\n" + json.dumps(event).encode() + b"\n")
+            plugin.save_chart_cache(tmp, {
+                "version": 1,
+                "last_date": str(today.date()),
+                "days": {str(old_day): {"test-model": 0}},
+            })
+            daily = plugin.maintain_chart_cache(tmp, "en")
+            self.assertEqual(daily[str(old_day)], {"test-model": 180})
+            self.assertEqual(plugin.load_chart_cache(tmp)["version"], plugin.CACHE_VERSION)
+            with patch.object(plugin, "collect_session_files", wraps=plugin.collect_session_files) as collect:
+                incremental = plugin.maintain_chart_cache(tmp, "en")
+            collect.assert_called_once_with(tmp, today.date(), today.date())
+            self.assertEqual(incremental[str(old_day)], {"test-model": 180})
+
     def _empty_chart(self, _files, buckets, bucket_unit, _period, _language):
         return {
             "buckets": [
@@ -436,6 +463,65 @@ class TestParseSessionsForChart(unittest.TestCase):
         ]
 
         self.assertEqual(self._parse_events(events), 120)
+
+    def _parse_raw_lines(self, lines):
+        today = datetime.now().astimezone()
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp) / "rollout.jsonl"
+            session.write_bytes(b"\n".join(lines) + b"\n")
+            result = plugin.parse_sessions_for_chart(
+                [str(session)],
+                [today],
+                "day",
+                "7d",
+                "en",
+            )
+        return result
+
+    def _raw_line(self, event):
+        return json.dumps(event).encode("utf-8")
+
+    def test_corrupted_line_does_not_abort_remaining_lines(self):
+        timestamp = datetime.now().astimezone().isoformat()
+        events = [
+            {"type": "turn_context", "payload": {"model": "gpt-5"}},
+            self._token_event({"total_tokens": 100}),
+        ]
+        corrupted = b'{"type": "event_msg", "payload": {"type": "token_count", "timestamp": "' \
+            + timestamp.encode("utf-8") + b'", "info": {"total_token_usage": {"total_tokens": 1\xff50}}}}'
+        after = self._token_event({"total_tokens": 180})
+
+        result = self._parse_raw_lines(
+            [self._raw_line(event) for event in events] + [corrupted, self._raw_line(after)]
+        )
+
+        segments = result["buckets"][0]["segments"]
+        self.assertEqual(segments, [{"model": "gpt-5", "tokens": 180}])
+
+    def test_corrupted_number_is_not_fabricated(self):
+        corrupted = b'{"type": "event_msg", "payload": {"type": "token_count", "info": ' \
+            b'{"total_token_usage": {"total_tokens": 9\xff99}}}}'
+
+        result = self._parse_raw_lines([self._raw_line({"type": "turn_context", "payload": {"model": "gpt-5"}}), corrupted])
+
+        self.assertEqual(result["buckets"][0]["segments"], [])
+
+    def test_corrupted_model_name_is_not_fabricated(self):
+        corrupted_context = b'{"type": "turn_context", "payload": {"model": "gpt-\xff5"}}'
+        valid_context = self._raw_line({"type": "turn_context", "payload": {"model": "gpt-5"}})
+        token_events = [
+            self._raw_line(self._token_event({"total_tokens": 100})),
+            self._raw_line(self._token_event({"total_tokens": 150})),
+        ]
+
+        result = self._parse_raw_lines([token_events[0], corrupted_context, token_events[1], valid_context])
+
+        segments = result["buckets"][0]["segments"]
+        # Entries seen before the first valid turn_context backfill to the
+        # first declared model; the corrupted model name must never appear.
+        self.assertEqual(segments, [{"model": "gpt-5", "tokens": 150}])
+        for segment in segments:
+            self.assertNotIn("�", segment["model"])
 
 
 if __name__ == "__main__":

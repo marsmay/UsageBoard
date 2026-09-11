@@ -149,4 +149,145 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: logDirectory.appendingPathComponent("relauncher.log").path))
     }
+
+    // MARK: - M3: descendant process cleanup
+
+    private func makeCleanupPlugin(root: URL, exitsNormally: Bool) throws -> URL {
+        let child = root.appendingPathComponent("cleanup-child.py")
+        try """
+        import pathlib, signal, time
+        root = pathlib.Path(__file__).parent
+        def stop(sig, frame):
+            (root / 'cleanup').write_text('started')
+            time.sleep(0.5)
+            (root / 'cleanup').write_text('finished')
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, stop)
+        (root / 'ready').write_text('ready')
+        while True: time.sleep(0.02)
+        """.write(to: child, atomically: true, encoding: .utf8)
+        let script = root.appendingPathComponent("cleanup-parent.py")
+        try """
+        import pathlib, subprocess, sys, time
+        root = pathlib.Path(__file__).parent
+        child = subprocess.Popen([sys.executable, str(root / 'cleanup-child.py')])
+        (root / 'child.pid').write_text(str(child.pid))
+        while not (root / 'ready').exists(): time.sleep(0.01)
+        print('{"updatedAt":"2026-09-11T00:00:00Z","items":[]}', flush=True)
+        \(exitsNormally ? "" : "time.sleep(30)")
+        """.write(to: script, atomically: true, encoding: .utf8)
+        addTeardownBlock {
+            if let value = try? String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8),
+               let pid = Int32(value) {
+                Darwin.kill(pid, SIGKILL)
+            }
+        }
+        return script
+    }
+
+    func testNormalPluginExitCleansDescendantsWithGracePeriod() throws {
+        let root = try temporaryDirectory()
+        let script = try makeCleanupPlugin(root: root, exitsNormally: true)
+        let unrelated = Process()
+        unrelated.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        unrelated.arguments = ["30"]
+        try unrelated.run()
+        defer { unrelated.terminate(); unrelated.waitUntilExit() }
+        let snapshot = PluginExecutor(timeoutSeconds: 3).run(
+            configuration: .init(name: "Test", executablePath: script.path), displayName: "Test", language: .en)
+        XCTAssertEqual(snapshot.state, .ready)
+        XCTAssertTrue(unrelated.isRunning, "another process group must remain untouched")
+        XCTAssertEqual(try? String(contentsOf: root.appendingPathComponent("cleanup"), encoding: .utf8), "finished")
+        let pid = try XCTUnwrap(Int32(String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8)))
+        XCTAssertTrue(waitForExit(pid))
+    }
+
+    func testTimeoutPreservesDescendantGraceAfterParentExits() throws {
+        let root = try temporaryDirectory()
+        let script = try makeCleanupPlugin(root: root, exitsNormally: false)
+        let snapshot = PluginExecutor(timeoutSeconds: 1).run(
+            configuration: .init(name: "Test", executablePath: script.path), displayName: "Test", language: .en)
+        guard case .failed = snapshot.state else { return XCTFail("expected timeout") }
+        XCTAssertEqual(try? String(contentsOf: root.appendingPathComponent("cleanup"), encoding: .utf8), "finished")
+    }
+
+    func testCancellationCleansDescendantsWithGracePeriod() async throws {
+        let root = try temporaryDirectory()
+        let script = try makeCleanupPlugin(root: root, exitsNormally: false)
+        let task = Task.detached {
+            PluginExecutor(timeoutSeconds: 10).run(
+                configuration: .init(name: "Test", executablePath: script.path), displayName: "Test", language: .en)
+        }
+        for _ in 0..<200 where !FileManager.default.fileExists(atPath: root.appendingPathComponent("ready").path) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        task.cancel()
+        _ = await task.value
+        XCTAssertEqual(try? String(contentsOf: root.appendingPathComponent("cleanup"), encoding: .utf8), "finished")
+        let pid = try XCTUnwrap(Int32(String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8)))
+        XCTAssertTrue(waitForExit(pid))
+    }
+
+    private func makeSpawnerScript(root: URL, ignoreSigterm: Bool = false) throws -> URL {
+        let script = root.appendingPathComponent("spawn.py")
+        let pidFile = root.appendingPathComponent("child.pid")
+        let ignore = ignoreSigterm ? "import signal; signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" : ""
+        try (ignore + """
+        import subprocess, pathlib, time
+        # The child inherits the plugin's stdout pipe, so it also exercises the
+        # "descendant holds the output pipe" case.
+        child = subprocess.Popen(["/bin/sh", "-c", "sleep 30"])
+        pathlib.Path("\(pidFile.path)").write_text(str(child.pid))
+        time.sleep(30)
+        """).write(to: script, atomically: true, encoding: .utf8)
+        return script
+    }
+
+    private func childPid(afterRunIn root: URL, timeoutSeconds: TimeInterval = 1) throws -> (Int32, PluginSnapshot) {
+        let script = try makeSpawnerScript(root: root)
+        let snapshot = PluginExecutor(timeoutSeconds: timeoutSeconds).run(
+            configuration: .init(name: "Test", executablePath: script.path),
+            displayName: "Test", language: .en
+        )
+        let pidText = try String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (Int32(pidText)!, snapshot)
+    }
+
+    private func waitForExit(_ pid: Int32, timeout: TimeInterval = 3) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            // A reaped or never-started process yields ESRCH; a surviving one
+            // (including an unreaped orphan) keeps the pid alive.
+            if Darwin.kill(pid, 0) != 0, errno == ESRCH { return true }
+            usleep(50_000)
+        }
+        return false
+    }
+
+    func testExecutorTimeoutCleansUpDescendantProcesses() throws {
+        let root = try temporaryDirectory()
+        let (pid, snapshot) = try childPid(afterRunIn: root)
+        guard case .failed = snapshot.state else {
+            return XCTFail("expected timeout failure, got \(snapshot.state)")
+        }
+        XCTAssertTrue(waitForExit(pid), "descendant process \(pid) must not survive plugin termination")
+    }
+
+    func testExecutorKillsPluginThatIgnoresSigterm() throws {
+        let root = try temporaryDirectory()
+        let script = try makeSpawnerScript(root: root, ignoreSigterm: true)
+        let start = Date()
+        let snapshot = PluginExecutor(timeoutSeconds: 1).run(
+            configuration: .init(name: "Test", executablePath: script.path),
+            displayName: "Test", language: .en
+        )
+        guard case .failed = snapshot.state else {
+            return XCTFail("expected timeout failure, got \(snapshot.state)")
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10)
+        let pidText = try String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertTrue(waitForExit(Int32(pidText)!), "descendant must not survive SIGKILL escalation")
+    }
 }

@@ -32,12 +32,25 @@ enum BrandIconSource {
 
 final class BrandIconCache: @unchecked Sendable {
     static let shared = BrandIconCache()
+    /// Transfer cap for remote icons. This bounds downloaded bytes only; it is
+    /// not a limit on decoded pixel memory.
+    static let maxRemoteBytes = 2 * 1024 * 1024
     private let cache: NSCache<NSString, NSImage> = {
         let c = NSCache<NSString, NSImage>()
         c.countLimit = 64
         c.totalCostLimit = 16 * 1024 * 1024
         return c
     }()
+    private let session: URLSession
+
+    init(session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 20
+        return URLSession(configuration: config)
+    }()) {
+        self.session = session
+    }
 
     func image(for url: URL) async -> NSImage? {
         let key = url.absoluteString as NSString
@@ -47,15 +60,34 @@ final class BrandIconCache: @unchecked Sendable {
             guard let contents = try? Data(contentsOf: url) else { return nil }
             data = contents
         } else {
-            guard let (contents, response) = try? await URLSession.shared.data(from: url),
-                  let response = response as? HTTPURLResponse,
-                  (200..<300).contains(response.statusCode) else { return nil }
+            guard let contents = await downloadRemote(url) else { return nil }
             data = contents
         }
         guard let image = NSImage(data: data) else { return nil }
         let cost = max(data.count, 1)
         cache.setObject(image, forKey: key, cost: cost)
         return image
+    }
+
+    /// Downloads a remote icon, aborting as soon as the received bytes exceed
+    /// the cap (a declared oversized length fails before the body is read).
+    /// Over-limit, timed-out, or cancelled transfers return nil so the caller
+    /// keeps the placeholder tile.
+    private func downloadRemote(_ url: URL) async -> Data? {
+        guard let (bytes, response) = try? await session.bytes(from: url),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else { return nil }
+        if http.expectedContentLength > Self.maxRemoteBytes { return nil }
+        var data = Data()
+        do {
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > Self.maxRemoteBytes { return nil }
+            }
+        } catch {
+            return nil
+        }
+        return data
     }
 }
 

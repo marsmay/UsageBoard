@@ -68,7 +68,7 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
-Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。
+Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。GLM 与 Codex 的图表缓存版本均为 2，首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 因此纠正旧跨日漏计，Codex 因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。
 
 配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
 
@@ -120,7 +120,7 @@ Store.refresh(pluginID:force:)
 
 `PluginExecutor` 对 `.py` 使用 `/usr/bin/env python3 <script>`，其他可执行文件直接运行；不经过 shell。参数为重复的 `--usageboard-param KEY=value`，并注入当前会话语言 `USAGEBOARD_LANGUAGE`。
 
-- 默认执行超时 15 秒；超时、取消或 stdout 超限发送 SIGTERM，1 秒后仍未退出则 SIGKILL。
+- 默认执行超时 15 秒；启动后确认插件是独立进程组首领才向该组发送信号。超时、取消或 stdout 超限时向整组发送 SIGTERM，保留最多 1 秒清理宽限期，再对仍存活成员发送 SIGKILL；父进程提前退出不会缩短后代的宽限期。正常退出后仍存活的同组后代也会清理，合法父进程输出仍可成功发布。未确认独立组时只处理直接进程；自行脱离进程组的后代不在保证范围内。
 - stdout 最多 8 MiB；stderr 保留前 64 KiB 并持续排空，避免管道阻塞。
 - 环境设置 UTF-8，并以 `PYTHONDONTWRITEBYTECODE=1` 禁止写入 Python 字节码。
 - 非零退出码先作为错误处理，优先展示 stderr；退出码 0 时先识别非空顶层 error，再解码成功对象。
@@ -128,6 +128,8 @@ Store.refresh(pluginID:force:)
 Codex 在用量与本地统计完成后查询可选重置卡：最多额外等待 2 秒，且不超过 main 开始后的 12 秒截止时间；已无预算则跳过。请求在 daemon 线程执行，以限制包含 DNS 和响应读取在内的整体等待，超时省略 credits 并正常输出主数据。
 
 `PluginMetadataParser` 读取 UTF-8 文件，仅扫描前 80 行。`UsageBoardPlugin:` 和结束标记 `/UsageBoardPlugin` 及整个 JSON 注释块都必须在此范围内。无效或未闭合的块不产生 metadata。
+
+Kimi 对无法确认时区的可选重置时间返回 null，不猜测 UTC；MiniMax 保持缺失 base_resp 的既有兼容行为，但显式 null 或其他非对象值返回解析失败；Claude 的空套餐字段回退配置值，再回退 pro。
 
 元数据参数支持 string、secret、integer、boolean、choice、directory、file。展示字段通过 `field@zh-Hans` / `field@en` 提供翻译，缺失或为空时回退基础字段。用量项目名称和错误文本由插件按语言参数直接返回，不从 metadata 翻译。
 
@@ -173,21 +175,21 @@ AppTheme 枚举定义在 Core 的 AppConfiguration.swift；App 层扩展映射 N
 
 语言选择保存到 configuration.language，当前会话继续使用 activeLanguage。选择不同语言出现 SwiftUI 重启提示；“稍后重启”保留选择，“立即重启”调用 AppRelauncher.relaunchCurrent 并在退出前等待保存。切回当前语言不提示。固定 UI 文案集中在 AppLocalization，新文案同时补中英文。
 
-BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径。相对路径以包内 Resources（开发时当前目录 Resources）为根；仅 `icons/light/` 相对路径在深色主题下优先同名 dark，缺失回退 light。NSCache 以实际 URL 缓存，SwiftUI task 以解析后的 URL 为标识，取消任务不回写。加载失败显示名称首字母占位。
+BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径。相对路径以包内 Resources（开发时当前目录 Resources）为根；仅 `icons/light/` 相对路径在深色主题下优先同名 dark，缺失回退 light。NSCache 以实际 URL 缓存，SwiftUI task 以解析后的 URL 为标识，取消任务不回写。远程图标限制为 2 MiB，请求无进展超时 10 秒、资源总时限 20 秒；超量、取消或失败均保留名称首字母占位。此限制仅针对远程传输字节，不限制本地文件或解码后像素内存。
 
 ## 7. 更新、构建与发布
 
 在线更新由 Store 组装三步：
 
 1. UpdateChecker 从 Info.plist 的 UBUpdateCheckURL 获取 version.json，按点分整数比较版本（缺段补零，不是完整 SemVer 预发布规则）。
-2. UpdateDownloader 下载 ZIP，用 ditto 解压；校验顶层唯一 UsageBoard.app、应用标识、APPL 类型、期望版本和包内可执行普通文件。
+2. UpdateDownloader 用独立 URLSession 下载 ZIP，接收过程中限制为 64 MiB，请求无进展超时 60 秒、资源总时限 300 秒；失败或取消清理临时 ZIP。成功后用 ditto 解压；校验顶层唯一 UsageBoard.app、应用标识、APPL 类型、期望版本和包内可执行普通文件。
 3. AppRelauncher 在目标目录暂存并签名新 app；旧进程退出后备份旧 app、替换并启动。移动或启动命令失败恢复旧 app，成功后清理备份。
 
-检查和下载要求 HTTPS、无 URL 用户凭据以及成功 HTTP 状态，重定向最终 URL 也校验。Store 分别维护检查/安装忙碌状态。回滚判断基于脚本命令退出状态，不等于新 app 启动后的健康检查。
+检查和下载要求 HTTPS、无 URL 用户凭据以及成功 HTTP 状态，重定向最终 URL 也校验。Store 分别维护检查/安装忙碌状态。回滚判断基于脚本命令退出状态，不等于新 app 启动后的健康检查。当前下载限制不构成解压配额；仍未实施解压过程体积上限或独立发布者认证，发布及替换继续使用 ad-hoc 签名。
 
 `scripts/build.sh` 停止现有 UsageBoard，构建 release，打包二进制、插件、帮助和图标，注入更新 URL、ad-hoc 签名并启动。首次创建 bundle 使用 0.1.0，已有版本保留；可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
 
-`scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；更新说明使用第二个参数，否则取最新本地 tag 到 HEAD 的提交。它生成 ZIP/version.json 并保留远端最近三个 ZIP，不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；操作步骤见 README 和项目指引。
+`scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；更新说明使用第二个参数，否则取最新本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它生成 ZIP/version.json 并保留远端最近三个 ZIP，不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；操作步骤见 README 和项目指引。
 
 ## 8. 验证与维护
 
@@ -199,6 +201,7 @@ swift test
 python3 -m pytest Tests/PluginTests -q
 python3 -m py_compile Resources/BundledPlugins/*.py
 bash -n scripts/build.sh scripts/release.sh
+bash Tests/ScriptTests/test_release_version_timing.sh
 ```
 
 按修改范围选用验证：Swift 改动运行相关 XCTest 和构建；内置插件改动运行 Python 测试，并通过 `bash scripts/build.sh` 重建才能在已打包 app 生效。只改用户独立插件时无需重建 app。纯文档修订检查代码依据、链接、示例和 `git diff --check`，无需重启应用。

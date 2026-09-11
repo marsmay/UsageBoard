@@ -96,6 +96,9 @@ public struct PluginExecutor: Sendable {
             stderr.fileHandleForReading.readabilityHandler = nil
             return failed(configuration: configuration, displayName: displayName, message: error.localizedDescription)
         }
+        // Only signal the process group if this plugin was its leader.
+        let pluginPid = process.processIdentifier
+        let leadsProcessGroup = Darwin.getpgid(pluginPid) == pluginPid
 
         let deadline = DispatchTime.now() + timeoutSeconds
         var finished = false
@@ -106,12 +109,20 @@ public struct PluginExecutor: Sendable {
             }
             if DispatchTime.now() >= deadline { break }
         }
-        if !finished {
-            process.terminate()
-            if exitSemaphore.wait(timeout: .now() + 1.0) != .success {
-                Darwin.kill(process.processIdentifier, SIGKILL)
-                _ = exitSemaphore.wait(timeout: .now() + 1.0)
+        let signalTarget = leadsProcessGroup ? -pluginPid : pluginPid
+        if !finished || (leadsProcessGroup && Darwin.kill(signalTarget, 0) == 0) {
+            // A normally exited parent may still leave descendants holding the
+            // pipes. Give the whole group time to clean up, even if the parent
+            // exits immediately in response to SIGTERM.
+            Darwin.kill(signalTarget, SIGTERM)
+            let graceDeadline = DispatchTime.now() + 1.0
+            while Darwin.kill(signalTarget, 0) == 0 && DispatchTime.now() < graceDeadline {
+                Thread.sleep(forTimeInterval: 0.01)
             }
+            if Darwin.kill(signalTarget, 0) == 0 {
+                Darwin.kill(signalTarget, SIGKILL)
+            }
+            if !finished { _ = exitSemaphore.wait(timeout: .now() + 1.0) }
         }
 
         // Wait briefly for readability handlers to drain remaining buffered data after EOF.

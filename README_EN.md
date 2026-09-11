@@ -86,6 +86,8 @@ On launch, the app creates symlinks in `plugins/` pointing to bundled plugins fr
 
 `icon` accepts HTTP(S) URLs, absolute file paths, `file://` URLs, and resource-relative paths. Relative paths resolve against the app bundle’s `Contents/Resources/`, or the current directory’s `Resources/` during development. For relative `icons/light/` paths, dark mode prefers a same-name `icons/dark/` file and falls back to light if missing. Load failures show the name’s initial.
 
+Remote icons have a 2 MiB transfer cap, a 10-second inactivity timeout, and a 20-second total timeout; oversized or failed loads keep the placeholder. This does not limit decoded pixel memory.
+
 ## Configuration
 
 Main configuration JSON structure:
@@ -226,18 +228,35 @@ Supported parameter types:
 
 `choice` parameters use segmented controls when space permits and a menu otherwise; `directory` parameters render as a path field with a folder picker; `file` parameters render as a path field with a file picker.
 
-Bundled plugins reuse the shared parameter helpers (standalone user plugins need `_common.py` alongside the script, or the standalone implementation in the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html)):
+Bundled plugins reuse the shared `_common.py` helpers (standalone user plugins need `_common.py` alongside the script, or the standalone implementation in the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html)):
 
 ```python
 import sys
-from _common import parse_usageboard_params, app_language
+from _common import parse_usageboard_params, app_language, make_translator, success, failure
 
-params = parse_usageboard_params(sys.argv[1:])
-language = app_language(params)
-api_key = params.get("API_KEY", "")
+def main():
+    params = parse_usageboard_params(sys.argv[1:])
+    language = app_language(params)
+    translate = make_translator({
+        "my_plugin_name": {"zh-Hans": "我的插件", "en": "My Plugin"},
+    })
+
+    api_key = params.get("API_KEY")
+    if not api_key:
+        return failure(translate(language, "missing_api_key"))
+
+    items = []  # Call your API here and build usage items
+    return success(items)
+
+if __name__ == "__main__":
+    sys.exit(main())
 ```
 
+`_common.py` provides parameter parsing (`parse_usageboard_params`), language detection (`app_language`), a translation factory (`make_translator`), output helpers (`success`/`failure`), color/status helpers (`color_for`/`status_for`/`numeric`), and unified HTTP error handling (`handle_http_error`/`handle_url_error`). New plugins should reuse these instead of reimplementing them; see the `_common.py` source for the full list of shared helpers.
+
 UsageBoard also passes the current app language: `--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans` or `--usageboard-param USAGEBOARD_LANGUAGE=en`. Scripts should read this reserved parameter and return display text in the corresponding language.
+
+Plugin runs have a default 15-second timeout and an 8 MiB stdout cap. After a run ends, including normal parent exit, descendants in the confirmed plugin process group receive SIGTERM and up to one second to clean up before SIGKILL. Plugins must not depend on descendants continuing after a run.
 
 ### Response Data Format
 
@@ -284,24 +303,15 @@ Failures can also return:
 }
 ```
 
-Field descriptions:
+Field summary (see the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html) for the full protocol and field details):
 
-- `updatedAt`: Plugin data update time, ISO 8601 format.
-- `items[].id`: Stable item ID.
-- `items[].name`: Display name.
-- `items[].used` / `items[].limit`: Used amount and total quota.
-- `items[].displayStyle`: `percent` shows percentage, `ratio` shows numeric ratio.
-- `items[].resetAt`: Optional reset time, ISO 8601 format.
-- `items[].status`: `normal`, `warning`, `critical`, or `unknown`. This field does not control the progress bar color or mark the whole plugin run as failed.
-- `items[].color`: Optional progress bar color. Supports `blue`, `yellow`, `orange`, `red`, `green`. Missing or unrecognized colors follow the progress ratio: blue below 60%, yellow from 60% to below 80%, orange from 80% to below 100%, and red at 100%.
-- `badge`: Optional string displayed in a rounded badge next to the plugin card title (uppercase bold text with a tinted foreground and a light matching background).
-- `badgeColor`: Optional string, badge color. Supports `blue`, `orange`, `gray`, `indigo`, `purple`, `teal`, `green`, `red`, `yellow`; falls back to a text-based preset (e.g. PRO/MAX) when absent.
-- `chart`: Optional token usage chart. Use the `kind: "line"` data structure; the global `chartMode` selects line or bar rendering.
-- `chart.period`: Stats period identifier, e.g. `7d`, `15d`, `30d`.
-- `chart.bucketUnit`: Time bucket unit, supports `hour` or `day`.
-- `chart.buckets[].segments[]`: Per-bucket model segments with `model` and `tokens`.
-- `chart.message`: Optional message shown when stats data is empty or unavailable.
-- `error`: Optional top-level error message. When present and non-empty, the run is treated as failed and the text is shown in the card body.
+- `updatedAt` and `items[]`: required. `used`/`limit`/`displayStyle` (`percent` or `ratio`)/`resetAt`/`status`/`color` control each usage row; when no color is specified, the progress bar follows the usage ratio (blue below 60%, yellow from 60% to below 80%, orange from 80% to below 100%, red at 100%).
+- `badge` / `badgeColor`: optional card title badge. `badgeColor` supports `blue`, `orange`, `gray` (or `grey`), `indigo`, `purple`, `teal`, `green`, `red`, `yellow`; absent values fall back to a text-based preset (e.g. PRO/MAX).
+- `credits`: optional array of quota reset cards (e.g. Codex rate-limit resets). Include only currently usable cards; omit the field entirely when the query fails so other data is unaffected.
+- `chart`: optional token usage chart. Use the `kind: "line"` structure with per-bucket model segments; the global `chartMode` selects line or bar rendering, and `chart.message` can carry a hint when stats are empty.
+- `error`: optional top-level error message. When present and non-empty, the run is treated as failed and the text is shown in the card body.
+
+GLM and Codex chart cache version 2 rebuilds the previous 30 days once when upgrading an older cache, then resumes incremental updates. Codex skips entire invalid UTF-8 lines while continuing with later valid events. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the existing compatibility behavior.
 
 The bundled Zhipu, Claude, and Codex plugins provide a `STAT_PERIOD` parameter supporting `none`, `7d`, `15d`, and `30d`; selecting none disables local stats. The Zhipu plugin uses the domestic API endpoint and is compatible with both Zhipu and ZAI Coding Plan keys. The Claude plugin fetches subscription usage via OAuth API; its `PLAN` parameter supports a `none` option that skips the API call and returns only local JSONL stats. When both the plan and the stats period are set to none, the plugin returns no data and the app keeps its card hidden during background refreshes and shows errors if a refresh fails. Local token totals sum actual input, output, cache creation, and cache read usage. It also supports a `CLAUDE_ONLY` toggle to filter third-party models and can use `DATA_DIR` to point at the `~/.claude` data directory. The Codex plugin reads authentication from the independent `AUTH_FILE` parameter (default `~/.codex/auth.json`) and uses `DATA_DIR` for session stats (default `~/.codex`). Changing the stats directory does not change the authentication path. Both Claude and Codex plugins use an incremental caching strategy stored in the data directory and re-scan the last cached day and subsequent days on every run. The DeepSeek plugin provides a `LIMIT` parameter for the displayed balance limit and colors the progress bar by the balance-to-limit ratio. The Codex plugin also lists the account's available rate-limit reset cards, showing the count and next expiry in a compact summary that expands into a two-column grid of cards with expiry and remaining validity; the query adds at most 2 seconds of waiting within the plugin’s remaining time budget, and timeout or failure omits the cards without affecting quota display. The Kimi plugin queries Kimi Code's 5-hour rolling window and weekly usage and automatically displays the subscription plan mapped from the membership level returned by the API; unknown levels omit the plan badge.
 
@@ -382,9 +392,9 @@ bash scripts/release.sh <version> "<release notes>"
 The release script:
 
 1. Reads the current version from `dist/UsageBoard.app/Contents/Info.plist`.
-2. Uses the specified version or increments that local version’s patch (initializing a missing bundle at 0.1.0).
+2. Uses the specified version or increments that local version’s patch (initializing a missing bundle at 0.1.0, so the first automatic release is 0.1.1).
 3. Auto-generates release notes from commits since the last release tag (or accepts manual notes as the second argument).
-4. Builds a release.
+4. Builds a release, then writes the target version and build number; a build failure preserves the existing bundle version and binary.
 5. Copies the binary, bundled plugins, help document, and icons.
 6. Injects the update check URL into Info.plist via PlistBuddy.
 7. Re-signs and verifies the app.
@@ -400,6 +410,8 @@ Release artifacts:
 - `dist/UsageBoard-<version>.zip`
 - `dist/version.json`
 
+Update ZIP downloads have a 64 MiB transfer cap, a 60-second inactivity timeout, and a 300-second total timeout. Failed or cancelled downloads remove their temporary ZIP. This does not enforce an extraction quota or authenticate the publisher; the existing ad-hoc signing flow is unchanged.
+
 ## Project Structure
 
 ```text
@@ -410,9 +422,11 @@ Tests/
   UsageBoardTests/      Core XCTest
   UsageBoardAppTests/   Store, theme, language, icon, and layout XCTest
   PluginTests/          Python plugin tests
+  ScriptTests/          Isolated release-script tests
 Resources/
   BundledPlugins/       Bundled Python plugins
   icons/                Local light/dark plugin icons
+  IconSources/          Retained icon source assets
   PluginAuthoringGuide.html
   UsageBoard.icns
 scripts/
