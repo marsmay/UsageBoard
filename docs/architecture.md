@@ -76,7 +76,7 @@ Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache
 
 PluginStateStore 以 NSLock 保护的内存缓存加磁盘文件实现两级缓存。文件名由 stateID 清理不安全字符后生成；先原子写盘成功再更新内存。磁盘文件被删除时，已有内存缓存仍可命中。`needsRefresh` 按 updatedAt 判断过期，间隔下限为 5 秒；Store 自身调度使用快照和 nextRefreshAt。
 
-`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。`PluginSnapshot.isVisibleOnDashboard` 隐藏无内容的成功快照；loading 且已有 updatedAt 的空快照继续隐藏，首次加载和失败仍显示。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
+`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。所有已启用插件的卡片始终渲染；无内容的快照显示"暂无用量数据"占位，失败时显示错误信息。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
 
 ## 4. Store 生命周期与数据流
 

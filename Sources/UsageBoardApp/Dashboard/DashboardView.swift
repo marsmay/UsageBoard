@@ -7,9 +7,7 @@ struct DashboardView: View {
     var maximumHeight: CGFloat
 
     private var enabledPlugins: [PluginConfiguration] {
-        store.configuration.plugins.filter(\.enabled).filter { plugin in
-            store.snapshot(for: plugin).isVisibleOnDashboard
-        }
+        store.configuration.plugins.filter(\.enabled)
     }
 
     private var enabledPluginIDs: [UUID] {

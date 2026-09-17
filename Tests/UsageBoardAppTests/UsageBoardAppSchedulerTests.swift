@@ -5,7 +5,7 @@ import UsageBoardCore
 
 @MainActor
 final class UsageBoardAppSchedulerTests: XCTestCase {
-    func testEmptyCachedSnapshotStaysHiddenDuringRefresh() async throws {
+    func testEmptyCachedSnapshotRefreshCyclesThroughLoading() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-empty-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let plugin = PluginConfiguration(name: "Empty", executablePath: "/bin/echo")
@@ -21,17 +21,14 @@ final class UsageBoardAppSchedulerTests: XCTestCase {
             state.releaseAll()
         }
         XCTAssertEqual(store.snapshot(for: plugin).state, .ready)
-        XCTAssertFalse(store.snapshot(for: plugin).isVisibleOnDashboard)
         store.refresh(pluginID: plugin.id, force: true)
         try await state.waitForRunCount(1)
         XCTAssertEqual(store.snapshot(for: plugin).state, .loading)
-        XCTAssertFalse(store.snapshot(for: plugin).isVisibleOnDashboard)
         state.releaseAll()
         for _ in 0..<100 where store.snapshot(for: plugin).state != .ready {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(store.snapshot(for: plugin).state, .ready)
-        XCTAssertFalse(store.snapshot(for: plugin).isVisibleOnDashboard)
     }
 
     func testStoreDoesNotOverwriteConfigurationAfterLoadFailure() throws {

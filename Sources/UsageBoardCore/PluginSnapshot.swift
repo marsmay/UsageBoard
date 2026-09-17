@@ -44,28 +44,6 @@ public struct PluginSnapshot: Equatable, Identifiable, Sendable {
     }
 }
 
-public extension PluginSnapshot {
-    /// Whether the snapshot carries anything worth rendering. Ready snapshots
-    /// with no items, chart or credits (e.g. all data sources disabled via
-    /// parameters) are hidden from the dashboard instead of showing an empty card.
-    var hasVisibleContent: Bool {
-        !items.isEmpty || chart != nil || !credits.isEmpty
-    }
-
-    /// Keep a successful empty result hidden while refreshing it, but always
-    /// expose first-load progress and failures so the user can act on them.
-    var isVisibleOnDashboard: Bool {
-        switch state {
-        case .ready:
-            return hasVisibleContent
-        case .loading:
-            return updatedAt == nil || hasVisibleContent
-        case .idle, .failed:
-            return true
-        }
-    }
-}
-
 public struct PluginCachedState: Codable, Equatable, Sendable {
     public var updatedAt: Date
     public var items: [UsageItem]
