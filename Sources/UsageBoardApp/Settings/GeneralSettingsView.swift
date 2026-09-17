@@ -27,7 +27,7 @@ struct GeneralSettingsView: View {
                     .controlSize(.small)
                     .labelsHidden()
                     .accessibilityLabel(strings.text(.theme))
-                    .frame(width: 210, alignment: .trailing)
+                    .fixedSize()
                 }
                 Divider().padding(.horizontal, 14)
                 SettingsRow(label: strings.text(.displayMode), hint: strings.text(.displayModeHint)) {
@@ -40,7 +40,7 @@ struct GeneralSettingsView: View {
                     .controlSize(.small)
                     .labelsHidden()
                     .accessibilityLabel(strings.text(.displayMode))
-                    .frame(width: 210, alignment: .trailing)
+                    .fixedSize()
                     .onChange(of: store.configuration.overviewDisplayMode) { _ in
                         store.persistConfiguration()
                     }
@@ -56,7 +56,7 @@ struct GeneralSettingsView: View {
                     .controlSize(.small)
                     .labelsHidden()
                     .accessibilityLabel(strings.text(.chartMode))
-                    .frame(width: 210, alignment: .trailing)
+                    .fixedSize()
                     .onChange(of: store.configuration.chartMode) { _ in
                         store.persistConfiguration()
                     }
@@ -96,7 +96,7 @@ struct GeneralSettingsView: View {
                     .controlSize(.small)
                     .labelsHidden()
                     .accessibilityLabel(strings.text(.language))
-                    .frame(width: 210, alignment: .trailing)
+                    .fixedSize()
                     .onChange(of: store.configuration.language) { newValue in
                         store.persistConfiguration()
                         isRestartAlertPresented = newValue != store.activeLanguage

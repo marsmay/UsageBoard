@@ -153,19 +153,16 @@ struct PluginParameterField: View {
                 .controlSize(.mini)
                 .labelsHidden()
         case .choice:
-            GeometryReader { geometry in
-                Group {
-                    if segmentedChoiceWidth <= geometry.size.width {
-                        choicePicker
-                            .pickerStyle(.segmented)
-                            .frame(width: segmentedChoiceWidth)
-                    } else {
-                        choicePicker
-                            .pickerStyle(.menu)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            // ViewThatFits picks between segmented and menu in a single layout
+            // pass, so the control renders at its final size on the first frame.
+            ViewThatFits(in: .horizontal) {
+                choicePicker
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                choicePicker
+                    .pickerStyle(.menu)
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .frame(height: 22)
         case .string:
             TextField(parameter.localizedPlaceholder(language: language) ?? "", text: valueBinding)
@@ -221,18 +218,12 @@ struct PluginParameterField: View {
     private var choicePicker: some View {
         Picker("", selection: valueBinding) {
             ForEach(parameter.options) { option in
-                Text(option.localizedLabel(language: language)).tag(option.value)
+                Text(option.localizedLabel(language: language))
+                    .padding(.horizontal, 4)
+                    .tag(option.value)
             }
         }
         .labelsHidden()
-    }
-
-    private var segmentedChoiceWidth: CGFloat {
-        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        let labelWidth = parameter.options.map {
-            ($0.localizedLabel(language: language) as NSString).size(withAttributes: [.font: font]).width
-        }.reduce(0, +)
-        return ceil(labelWidth + 20 * CGFloat(parameter.options.count))
     }
 
     private var valueBinding: Binding<String> {
