@@ -182,10 +182,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 }
 
 @main
-struct UsageBoardApplication: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        Settings { EmptyView() }
+enum UsageBoardApplication {
+    // 纯 AppKit 启动：不再声明 SwiftUI Settings scene——新版 macOS 会把
+    // `Settings { EmptyView() }` 占位窗口在启动时直接显示出来。
+    // 菜单栏、弹层和设置窗口均由 AppDelegate 用 AppKit 自建。
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
     }
 }
