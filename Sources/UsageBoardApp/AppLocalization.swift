@@ -157,6 +157,13 @@ struct AppLocalization {
         case .showOnlyTotalUsage: return "Show only total tokens"
         case .noStatsData: return "No stats data available"
         case .quitUsageBoard: return "Quit UsageBoard"
+        case .editMenu: return "Edit"
+        case .undo: return "Undo"
+        case .redo: return "Redo"
+        case .cut: return "Cut"
+        case .copy: return "Copy"
+        case .paste: return "Paste"
+        case .selectAll: return "Select All"
         case .restartRequiredTitle: return "Apply the new language now?"
         case .restartRequiredMessage: return "Restart UsageBoard to use the new language. You can also restart later; your language selection will be kept."
         case .restartNow: return "Restart Now"
@@ -231,6 +238,13 @@ struct AppLocalization {
         case .showOnlyTotalUsage: return "只显示 Token 总量"
         case .noStatsData: return "暂无可用统计数据"
         case .quitUsageBoard: return "退出 UsageBoard"
+        case .editMenu: return "编辑"
+        case .undo: return "撤销"
+        case .redo: return "重做"
+        case .cut: return "剪切"
+        case .copy: return "拷贝"
+        case .paste: return "粘贴"
+        case .selectAll: return "全选"
         case .restartRequiredTitle: return "立即应用新语言？"
         case .restartRequiredMessage: return "重启 UsageBoard 后，界面将使用新语言。也可以稍后重启，所选语言会保留。"
         case .restartNow: return "立即重启"
@@ -304,6 +318,13 @@ struct AppLocalization {
         case showOnlyTotalUsage
         case noStatsData
         case quitUsageBoard
+        case editMenu
+        case undo
+        case redo
+        case cut
+        case copy
+        case paste
+        case selectAll
         case restartRequiredTitle
         case restartRequiredMessage
         case restartNow

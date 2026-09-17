@@ -156,6 +156,8 @@ chart 使用 `kind: "line"` 的桶/分段数据，line/bar 的实际渲染由全
 
 App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSStatusItem、NSPopover 和设置 NSWindow；popover 使用 applicationDefined 行为，配合局部/全局点击监听关闭，关闭时清理监听。
 
+启动使用纯 AppKit 生命周期，不声明 SwiftUI Settings scene。AppDelegate 在启动时安装 AppMenu 创建的中英文应用与编辑菜单；编辑命令通过 nil target 沿 responder chain 送到当前输入框，保留撤销、重做、剪切、拷贝、粘贴和全选快捷键。
+
 - 设置窗口初始 800×520，最小 800×480。
 - popover 固定宽 380，高度随内容缩放，上限为状态栏所在屏幕可用高度的 75%。OverviewView 使用纵向 fixedSize 支持收缩，MeasuredScrollView 按扣除标题等区域后的预算滚动。
 - DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。重置卡默认收起为数量与最近到期摘要，整行点击展开按到期时间排序的两列卡片明细（每排两张，奇数张时最后一张左对齐）；常态使用次级文字色，临近到期才着色。

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
+        NSApp.mainMenu = AppMenu.make(strings: AppLocalization.shared)
         themeSubscription = store.$configuration
             .map(\.theme)
             .removeDuplicates()
