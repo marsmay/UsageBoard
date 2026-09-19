@@ -49,6 +49,7 @@ from _common import (  # noqa: E402
 )
 
 BASE_URL = "https://api.commandcode.ai/alpha/billing/"
+PLAN_BADGE_COLOR = {"GO": "teal", "GOAT": "blue", "MAX": "orange"}
 TRANSLATE = make_translator({
     "five_hour": {"zh-Hans": "5 小时用量", "en": "5-hour usage"},
     "weekly": {"zh-Hans": "周用量", "en": "Weekly usage"},
@@ -153,7 +154,7 @@ def subscription_badge(subscription: dict[str, Any]) -> str | None:
     if not isinstance(plan, str) or not plan.strip():
         return None
     name = plan.removeprefix("individual-")
-    return "GOAT" if name == "goat" else name.replace("-", " ").title()
+    return name.upper() if name.upper() in PLAN_BADGE_COLOR else name.replace("-", " ").title()
 
 
 def main() -> int:
@@ -190,7 +191,8 @@ def main() -> int:
         return failure(TRANSLATE(language, "usage_parse_failed"))
     if not items:
         return failure(TRANSLATE(language, "no_quota"))
-    return success(items, badge=subscription_badge(subscription))
+    badge = subscription_badge(subscription)
+    return success(items, badge=badge, badgeColor=PLAN_BADGE_COLOR.get(badge))
 
 
 if __name__ == "__main__":

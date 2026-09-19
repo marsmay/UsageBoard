@@ -127,7 +127,7 @@ Store.refresh(pluginID:force:)
 
 Codex 在用量与本地统计完成后查询可选重置卡：最多额外等待 2 秒，且不超过 main 开始后的 12 秒截止时间；已无预算则跳过。请求在 daemon 线程执行，以限制包含 DNS 和响应读取在内的整体等待，超时省略 credits 并正常输出主数据。
 
-Command Code 使用 API Key 查询 `/alpha/billing/credits` 的 `windowLimits.fiveHour` / `weekly`（used、cap、resetAt）及 `credits.monthlyCredits`；月上限暂按周上限两倍估算，月已用取上限减余额且下限为零，充值余额不参与。缺少周窗口或周上限不大于零时省略月项；缺失金额不伪造零用量。`subscriptions` 仅补充套餐与账期，失败不丢弃额度。两个请求分别使用 6 秒与 3 秒网络超时，不跟随携带密钥的重定向。插件复用现有 percent 输出、主题图标与错误处理，不改变协议。
+Command Code 使用 API Key 查询 `/alpha/billing/credits` 的 `windowLimits.fiveHour` / `weekly`（used、cap、resetAt）及 `credits.monthlyCredits`；月上限暂按周上限两倍估算，月已用取上限减余额且下限为零，充值余额不参与。缺少周窗口或周上限不大于零时省略月项；缺失金额不伪造零用量。`subscriptions` 仅补充套餐与账期，失败不丢弃额度。两个请求分别使用 6 秒与 3 秒网络超时，不跟随携带密钥的重定向。套餐通过 badgeColor 显式映射 GO→teal、GOAT→blue、MAX→orange；插件复用现有 percent 输出、主题图标与错误处理，不改变协议。
 
 `PluginMetadataParser` 读取 UTF-8 文件，仅扫描前 80 行。`UsageBoardPlugin:` 和结束标记 `/UsageBoardPlugin` 及整个 JSON 注释块都必须在此范围内。无效或未闭合的块不产生 metadata。
 

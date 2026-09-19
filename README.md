@@ -69,7 +69,7 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 
 内置插件图标位于 [Resources/icons](Resources/icons)，包含 light/dark 两套 PNG 图标，随 app 打包到 `Contents/Resources/icons/`，离线可用并随界面主题切换。配置中的 `icon` 使用资源相对路径（如 `icons/light/kimi.png`），不依赖插件符号链接或开发机器的绝对路径。
 
-Command Code：在插件设置中填写 `API_KEY`；手动运行脚本也可使用环境变量 `COMMAND_API_KEY`（设置参数优先）。通过未公开稳定契约的 `/alpha/billing/credits` 查询额度，`/alpha/billing/subscriptions` 补充套餐和月度重置时间。月上限暂按 **周上限 × 2** 估算，月已用为 `max(月上限 − monthlyCredits, 0)`，不包含充值余额；三项以百分比显示，名称为“5 小时用量”“周用量”“月用量”。缺少周窗口或周上限不大于零时不显示月度估算；订阅查询失败仍显示额度，但省略套餐和月度重置时间。应用不会自动读取 shell 配置，请在设置中填写密钥。
+Command Code：在插件设置中填写 `API_KEY`；手动运行脚本也可使用环境变量 `COMMAND_API_KEY`（设置参数优先）。通过未公开稳定契约的 `/alpha/billing/credits` 查询额度，`/alpha/billing/subscriptions` 补充套餐和月度重置时间。月上限暂按 **周上限 × 2** 估算，月已用为 `max(月上限 − monthlyCredits, 0)`，不包含充值余额；三项以百分比显示，名称为“5 小时用量”“周用量”“月用量”。缺少周窗口或周上限不大于零时不显示月度估算；订阅查询失败仍显示额度，但省略套餐和月度重置时间。应用不会自动读取 shell 配置，请在设置中填写密钥。套餐徽标 GO / GOAT / MAX 分别使用青色 / 蓝色 / 橙色。
 
 ## 运行时目录
 

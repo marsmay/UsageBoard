@@ -44,6 +44,7 @@ class CommandCodeTests(unittest.TestCase):
         five, week, month = output['items']
         self.assertEqual(output['schemaVersion'], 1)
         self.assertEqual(output['badge'], 'GOAT')
+        self.assertEqual(output['badgeColor'], 'blue')
         self.assertEqual([(i['used'], i['limit']) for i in output['items']], [(2, 14), (2, 35), (2, 70)])
         self.assertEqual(five['resetAt'], '2026-09-19T21:12:56.206Z')
         self.assertEqual(week['resetAt'], '2026-09-26T16:12:56.206Z')
@@ -78,6 +79,16 @@ class CommandCodeTests(unittest.TestCase):
         output, _ = self.run_main(params={'API_KEY': 'fake', 'USAGEBOARD_LANGUAGE': 'en'})
         self.assertEqual([i['name'] for i in output['items']], ['5-hour usage', 'Weekly usage', 'Monthly usage'])
 
+    def test_subscription_tier_badge_colors(self):
+        for plan, badge, color in [('go', 'GO', 'teal'), ('goat', 'GOAT', 'blue'),
+                                   ('max', 'MAX', 'orange'), ('future', 'Future', None)]:
+            with self.subTest(plan=plan):
+                subscription = copy.deepcopy(SUBSCRIPTION)
+                subscription['data']['planId'] = 'individual-' + plan
+                output, _ = self.run_main([CREDITS, subscription])
+                self.assertEqual(output['badge'], badge)
+                self.assertEqual(output.get('badgeColor'), color)
+
     def test_subscription_failure_keeps_quotas_without_badge_or_reset(self):
         for response in [TimeoutError(), urllib.error.HTTPError('url', 401, 'no', {}, None),
                          {'success': False, 'data': SUBSCRIPTION['data']}, {'success': True, 'data': None}]:
@@ -86,6 +97,7 @@ class CommandCodeTests(unittest.TestCase):
                 self.assertEqual(len(output['items']), 3)
                 self.assertIsNone(output['items'][2]['resetAt'])
                 self.assertNotIn('badge', output)
+                self.assertNotIn('badgeColor', output)
 
     def test_missing_window_and_monthly_balance_are_not_zero_usage(self):
         data = copy.deepcopy(CREDITS)
