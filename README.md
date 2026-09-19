@@ -63,10 +63,13 @@ UsageBoard 是一个原生 macOS 菜单栏应用，用于聚合展示 API、模�
 | DeepSeek | `deepseek-usage-plugin.py` | 查询 DeepSeek 账户余额 |
 | Kimi | `kimi-usage-plugin.py` | 查询 Kimi Code 用量 |
 | Tavily | `tavily-usage-plugin.py` | 查询 Tavily Search 月度用量 |
+| Command Code | `commandcode-usage-plugin.py` | 查询订阅的 5 小时、周和月度用量 |
 
 内置插件源文件位于 [Resources/BundledPlugins](Resources/BundledPlugins)，其中 `_common.py` 是插件共享的公共模块，提供参数解析、翻译、HTTP 错误处理等工具函数。打包后它们会位于 app 包的 `Contents/Resources/Plugins/`。
 
 内置插件图标位于 [Resources/icons](Resources/icons)，包含 light/dark 两套 PNG 图标，随 app 打包到 `Contents/Resources/icons/`，离线可用并随界面主题切换。配置中的 `icon` 使用资源相对路径（如 `icons/light/kimi.png`），不依赖插件符号链接或开发机器的绝对路径。
+
+Command Code：在插件设置中填写 `API_KEY`；手动运行脚本也可使用环境变量 `COMMAND_API_KEY`（设置参数优先）。通过未公开稳定契约的 `/alpha/billing/credits` 查询额度，`/alpha/billing/subscriptions` 补充套餐和月度重置时间。月上限暂按 **周上限 × 2** 估算，月已用为 `max(月上限 − monthlyCredits, 0)`，不包含充值余额；三项以百分比显示，名称为“5 小时用量”“周用量”“月用量”。缺少周窗口或周上限不大于零时不显示月度估算；订阅查询失败仍显示额度，但省略套餐和月度重置时间。应用不会自动读取 shell 配置，请在设置中填写密钥。
 
 ## 运行时目录
 

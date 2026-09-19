@@ -14,7 +14,7 @@ final class BrandIconTests: XCTestCase {
         let plugins = try FileManager.default.contentsOfDirectory(
             at: resources.appendingPathComponent("BundledPlugins"), includingPropertiesForKeys: nil
         ).filter { $0.pathExtension == "py" && !$0.lastPathComponent.hasPrefix("_") }
-        XCTAssertEqual(plugins.count, 7)
+        XCTAssertEqual(plugins.count, 8)
         for plugin in plugins {
             let metadata = try XCTUnwrap(PluginMetadataParser.parse(fileURL: plugin))
             let path = try XCTUnwrap(metadata.icon)

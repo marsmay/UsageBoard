@@ -28,6 +28,7 @@ def available_interpreters():
 
 def plugin_environment(interpreter: Path, home_dir: Path) -> dict[str, str]:
     env = os.environ.copy()
+    env.pop("COMMAND_API_KEY", None)
     env.update({
         "HOME": str(home_dir),
         "PATH": str(home_dir / "bin"),

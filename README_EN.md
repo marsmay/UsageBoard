@@ -63,10 +63,13 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
 | DeepSeek | `deepseek-usage-plugin.py` | Query DeepSeek account balance |
 | Kimi | `kimi-usage-plugin.py` | Query Kimi Code usage |
 | Tavily | `tavily-usage-plugin.py` | Query Tavily Search monthly usage |
+| Command Code | `commandcode-usage-plugin.py` | Query subscription 5-hour, weekly, and monthly usage |
 
 Bundled plugin source files are in [Resources/BundledPlugins](Resources/BundledPlugins), including the shared `_common.py` helpers. After packaging, they reside in the app bundle at `Contents/Resources/Plugins/`.
 
 Bundled icons in [Resources/icons](Resources/icons) are packaged into `Contents/Resources/icons/`. Metadata uses resource-relative paths such as `icons/light/kimi.png`; icons are available offline.
+
+Command Code: enter `API_KEY` in plugin settings. Manual script runs can also use the `COMMAND_API_KEY` environment variable (the setting takes precedence). The undocumented `/alpha/billing/credits` endpoint supplies quotas; `/alpha/billing/subscriptions` enriches the plan and monthly reset time. The monthly cap is temporarily estimated as **2 × the weekly cap**; monthly spend is `max(monthly cap − monthlyCredits, 0)`, excluding purchased credits. The three rows display percentages: “5-hour usage”, “Weekly usage”, and “Monthly usage”. If the weekly window is missing or its cap is non-positive, the monthly estimate is omitted. If the subscription request fails, quotas remain available without the plan badge or monthly reset. The app does not source shell configuration; enter the key in settings.
 
 ## Runtime Directory
 
