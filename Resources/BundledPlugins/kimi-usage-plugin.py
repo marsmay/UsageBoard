@@ -11,6 +11,21 @@
 #   "description@en": "Query Kimi Code usage",
 #   "parameters": [
 #     {
+#       "name": "PLAN",
+#       "label": "Subscription Plan",
+#       "label@zh-Hans": "订阅计划",
+#       "label@en": "Subscription Plan",
+#       "type": "choice",
+#       "required": false,
+#       "defaultValue": "Andante",
+#       "options": [
+#         {"label": "Andante", "value": "Andante"},
+#         {"label": "Moderato", "value": "Moderato"},
+#         {"label": "Allegretto", "value": "Allegretto"},
+#         {"label": "Allegro", "value": "Allegro"}
+#       ]
+#     },
+#     {
 #       "name": "API_KEY",
 #       "label": "Api Key",
 #       "label@zh-Hans": "Api Key",
@@ -226,7 +241,9 @@ def main() -> int:
     if not items:
         return failure(translate(language, "no_quota_items"))
 
-    return success(items, badge=auto_badge, badgeColor=PLAN_BADGE_COLOR.get(auto_badge))
+    configured_plan = params.get("PLAN", "").strip()
+    badge = configured_plan if configured_plan in ("Andante", "Moderato", "Allegretto", "Allegro") else auto_badge
+    return success(items, badge=badge, badgeColor=PLAN_BADGE_COLOR.get(badge))
 
 
 if __name__ == "__main__":

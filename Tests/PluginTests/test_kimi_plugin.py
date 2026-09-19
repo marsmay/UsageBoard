@@ -23,7 +23,7 @@ def load_plugin():
 
 plugin = load_plugin()
 
-# Mirrors the real https://api.kimi.com/coding/v1/usages response shape.
+# Legacy usage response including membership; current responses can omit user.
 FAKE_USAGE = {
     "user": {
         "userId": "test-user",
@@ -231,10 +231,53 @@ class TestMainFlow(unittest.TestCase):
         self.assertEqual(output["badgeColor"], "blue")
         self.assertEqual(len(output["items"]), 2)
 
+    def test_configured_plans_override_api_badge_with_existing_colors(self):
+        for plan, color in [("Andante", "gray"), ("Moderato", "indigo"),
+                            ("Allegretto", "blue"), ("Allegro", "orange")]:
+            for has_membership in [True, False]:
+                with self.subTest(plan=plan, has_membership=has_membership):
+                    payload = dict(FAKE_USAGE)
+                    if not has_membership:
+                        del payload["user"]
+                    output = run_main(["--usageboard-param", "API_KEY=fake",
+                                       "--usageboard-param", f"PLAN={plan}"], fake_response=payload)
+                    self.assertEqual(output["badge"], plan)
+                    self.assertEqual(output["badgeColor"], color)
+                    self.assertEqual(len(output["items"]), 2)
+
+    def test_invalid_configured_plan_falls_back_to_api(self):
+        for plan in ["", "unknown", "Adagio"]:
+            output = run_main(["--usageboard-param", "API_KEY=fake",
+                               "--usageboard-param", f"PLAN={plan}"], fake_response=FAKE_USAGE)
+            self.assertEqual(output["badge"], "Allegretto")
+
+    def test_plan_metadata_exposes_four_choices_in_scanned_header(self):
+        lines = PLUGIN_PATH.read_text().splitlines()[:80]
+        start = lines.index("# UsageBoardPlugin:")
+        end = lines.index("# /UsageBoardPlugin")
+        metadata = json.loads("\n".join(line[2:] for line in lines[start + 1:end]))
+        plan = metadata["parameters"][0]
+        self.assertEqual(plan["name"], "PLAN")
+        self.assertEqual(plan["type"], "choice")
+        self.assertEqual(plan["defaultValue"], "Andante")
+        self.assertEqual([o["value"] for o in plan["options"]],
+                         ["Andante", "Moderato", "Allegretto", "Allegro"])
+        self.assertEqual(metadata["parameters"][1]["name"], "API_KEY")
+
     def test_unknown_membership_level_omits_badge(self):
         payload = dict(FAKE_USAGE)
         payload["user"] = {"membership": {"level": "LEVEL_UNKNOWN"}}
         output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=payload)
+        self.assertNotIn("badge", output)
+        self.assertNotIn("badgeColor", output)
+
+    def test_current_usage_response_without_user_keeps_quotas_without_guessing_plan(self):
+        payload = dict(FAKE_USAGE)
+        del payload["user"]
+        payload["usages"] = {"limit_5h": {"used_ratio": 0}, "limit_7d": {"used_ratio": 0.5}}
+        payload["booster_wallet"] = {"balance": {"subscriptionId": "not-a-plan"}}
+        output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=payload)
+        self.assertEqual(len(output["items"]), 2)
         self.assertNotIn("badge", output)
         self.assertNotIn("badgeColor", output)
 

@@ -131,7 +131,7 @@ Command Code 使用 API Key 查询 `/alpha/billing/credits` 的 `windowLimits.fi
 
 `PluginMetadataParser` 读取 UTF-8 文件，仅扫描前 80 行。`UsageBoardPlugin:` 和结束标记 `/UsageBoardPlugin` 及整个 JSON 注释块都必须在此范围内。无效或未闭合的块不产生 metadata。
 
-Kimi 对无法确认时区的可选重置时间返回 null，不猜测 UTC；MiniMax 保持缺失 base_resp 的既有兼容行为，但显式 null 或其他非对象值返回解析失败；Claude 的空套餐字段回退配置值，再回退 pro。
+Kimi 提供 PLAN choice：Andante / Moderato / Allegretto / Allegro，设置默认 Andante，徽标依次使用 gray / indigo / blue / orange；有效手动配置优先，未配置或值无效时回退 `user.membership.level` 白名单映射，未知则省略徽标。2026-09-20 实测 API Key 用量响应已无 user 字段，官方控制台 GetSubscription 接口使用同一 API Key 返回 401，因此通过手动配置补充套餐，不根据额度或钱包 subscriptionId 猜测等级。Kimi 对无法确认时区的可选重置时间返回 null，不猜测 UTC；MiniMax 保持缺失 base_resp 的既有兼容行为，但显式 null 或其他非对象值返回解析失败；Claude 的空套餐字段回退配置值，再回退 pro。
 
 元数据参数支持 string、secret、integer、boolean、choice、directory、file。展示字段通过 `field@zh-Hans` / `field@en` 提供翻译，缺失或为空时回退基础字段。用量项目名称和错误文本由插件按语言参数直接返回，不从 metadata 翻译。
 
