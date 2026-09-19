@@ -353,6 +353,26 @@ final class UsageBoardStore: ObservableObject {
         }
     }
 
+    func movePlugins(fromOffsets offsets: IndexSet, toOffset destination: Int, visibleIDs: [UUID]) {
+        // Reorder only the visible slots so search results cannot move hidden plugins.
+        let visibleSet = Set(visibleIDs)
+        let slots = configuration.plugins.indices.filter { visibleSet.contains(configuration.plugins[$0].id) }
+        var reordered = slots.map { configuration.plugins[$0] }
+        guard reordered.map(\.id) == visibleIDs,
+              !offsets.isEmpty,
+              offsets.allSatisfy({ reordered.indices.contains($0) }),
+              (0...reordered.count).contains(destination) else { return }
+        reordered.move(fromOffsets: offsets, toOffset: destination)
+        guard reordered.map(\.id) != visibleIDs else { return }
+        var plugins = configuration.plugins
+        for (slot, plugin) in zip(slots, reordered) {
+            plugins[slot] = plugin
+        }
+        configuration.plugins = plugins
+        rebuildSnapshots()
+        persistConfiguration()
+    }
+
     func removePlugin(id: UUID) {
         guard let index = configuration.plugins.firstIndex(where: { $0.id == id }) else { return }
         configuration.plugins.remove(at: index)

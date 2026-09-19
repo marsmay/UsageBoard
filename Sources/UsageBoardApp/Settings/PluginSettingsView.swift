@@ -7,7 +7,6 @@ import UsageBoardCore
 struct PluginSettingsView: View {
     @ObservedObject var store: UsageBoardStore
     @State private var selectedPluginID: UUID?
-    @State private var draggingPluginID: UUID?
     @Binding var draft: PluginConfiguration?
     @State private var searchText = ""
     private var strings: AppLocalization {
@@ -55,33 +54,33 @@ struct PluginSettingsView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 6)
 
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        if filteredPlugins.isEmpty && !searchText.isEmpty {
-                            Text(strings.text(.noSearchResults))
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .padding()
-                        }
-                        ForEach(filteredPlugins) { plugin in
-                            pluginListRow(plugin)
-                                .tag(plugin.id)
-                                .onDrag {
-                                    draggingPluginID = plugin.id
-                                    return NSItemProvider(object: plugin.id.uuidString as NSString)
-                                }
-                                .onDrop(of: [.text], delegate: PluginDropDelegate(
-                                    plugins: $store.configuration.plugins,
-                                    targetID: plugin.id,
-                                    draggingID: $draggingPluginID,
-                                    onDropCompleted: {
-                                        store.rebuildSnapshots()
-                                        store.persistConfiguration()
-                                    }
-                                ))
-                        }
+                List(selection: Binding(
+                    get: { selectedPluginID },
+                    set: { if let id = $0 { selectPlugin(id) } }
+                )) {
+                    if filteredPlugins.isEmpty && !searchText.isEmpty {
+                        Text(strings.text(.noSearchResults))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding()
+                    }
+                    ForEach(filteredPlugins) { plugin in
+                        pluginListRow(plugin)
+                            .tag(plugin.id)
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    }
+                    .onMove { offsets, destination in
+                        store.movePlugins(
+                            fromOffsets: offsets,
+                            toOffset: destination,
+                            visibleIDs: filteredPlugins.map(\.id)
+                        )
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .frame(maxHeight: .infinity)
 
                 Divider()
@@ -271,36 +270,25 @@ struct PluginSettingsView: View {
 
     private func pluginListRow(_ plugin: PluginConfiguration) -> some View {
         HStack(spacing: 8) {
-            Button { selectPlugin(plugin.id) } label: {
-                HStack(spacing: 8) {
-                    BrandTile(
-                        iconURL: plugin.metadata?.icon,
-                        fallbackName: PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage),
-                        size: 22
-                    )
-                    Text(PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))
-                        .font(.system(size: 12.5, weight: selectedPluginID == plugin.id ? .semibold : .regular))
-                        .foregroundStyle(plugin.enabled ? Color.primary : Color.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(selectedPluginID == plugin.id ? .isSelected : [])
+            BrandTile(
+                iconURL: plugin.metadata?.icon,
+                fallbackName: PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage),
+                size: 22
+            )
+            Text(PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))
+                .font(.system(size: 12.5, weight: selectedPluginID == plugin.id ? .semibold : .regular))
+                .foregroundStyle(plugin.enabled ? Color.primary : Color.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
             Toggle("", isOn: pluginEnabledBinding(plugin))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .accessibilityLabel("\(strings.text(.enabled)) \(store.displayNames[plugin.id] ?? PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))")
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 2)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(selectedPluginID == plugin.id ? Color.accentColor.opacity(0.16) : Color.clear)
-        )
         .contentShape(Rectangle())
     }
 
@@ -350,33 +338,5 @@ struct PluginSettingsView: View {
         store.lastError = store.activeLanguage == .en
             ? "Plugin authoring guide was not found"
             : "未找到插件编写说明文档"
-    }
-}
-
-// MARK: - Drag & Drop
-
-struct PluginDropDelegate: DropDelegate {
-    @Binding var plugins: [PluginConfiguration]
-    let targetID: UUID
-    @Binding var draggingID: UUID?
-    var onDropCompleted: () -> Void
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        guard let draggingID else { return false }
-        guard let fromIndex = plugins.firstIndex(where: { $0.id == draggingID }),
-              let toIndex = plugins.firstIndex(where: { $0.id == targetID }),
-              fromIndex != toIndex else {
-            self.draggingID = nil
-            return false
-        }
-        let moved = plugins.remove(at: fromIndex)
-        plugins.insert(moved, at: toIndex)
-        self.draggingID = nil
-        onDropCompleted()
-        return true
     }
 }
