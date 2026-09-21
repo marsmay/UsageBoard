@@ -72,6 +72,15 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+# ─── Model names ────────────────────────────────────────────────────────────────
+
+def normalize_model_name(name: Any) -> str | None:
+    """Return the last `/`-separated segment of a model name (`deepseek/v4` -> `v4`)."""
+    if not isinstance(name, str):
+        return None
+    return name.strip().split("/")[-1].strip() or None
+
+
 # ─── Output ─────────────────────────────────────────────────────────────────────
 
 def success(items: list[dict[str, Any]], badge: str | None = None, chart: dict[str, Any] | None = None, badgeColor: str | None = None, credits: list[dict[str, Any]] | None = None) -> int:

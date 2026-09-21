@@ -75,6 +75,7 @@ from _common import (  # noqa: E402
     handle_http_error,
     handle_url_error,
     make_translator,
+    normalize_model_name,
     parse_usageboard_params,
     success,
     utc_now_iso,
@@ -86,7 +87,7 @@ CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credit
 CREDITS_TIMEOUT_SECONDS = 2.0
 # Leave time to serialize stdout before PluginExecutor's 15-second deadline.
 CREDITS_DEADLINE_SECONDS = 12.0
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 
 TRANSLATIONS = {
@@ -489,9 +490,8 @@ def parse_sessions_for_chart(
                         continue
 
                     if kind == "turn_context":
-                        model = payload.get("model")
-                        if isinstance(model, str) and model.strip():
-                            model = model.strip()
+                        model = normalize_model_name(payload.get("model"))
+                        if model:
                             if first_model is None:
                                 first_model = model
                             current_model = model

@@ -79,6 +79,7 @@ from _common import (  # noqa: E402
     color_for_pct,
     failure,
     make_translator,
+    normalize_model_name,
     parse_usageboard_params,
     success,
     utc_now_iso,
@@ -86,7 +87,7 @@ from _common import (  # noqa: E402
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 PARSE_ERROR = "parse_error"
 REQUEST_TIMEOUT = "request_timeout"
@@ -273,7 +274,7 @@ def parse_records(files, start_dt, end_dt):
                     if ts.tzinfo is None:
                         ts = ts.replace(tzinfo=timezone.utc)
 
-                    model = msg.get("model", "unknown")
+                    model = normalize_model_name(msg.get("model")) or "unknown"
                     existing = records_by_id.get(msg_id)
                     if existing is None:
                         records_by_id[msg_id] = [ts, model, breakdown]

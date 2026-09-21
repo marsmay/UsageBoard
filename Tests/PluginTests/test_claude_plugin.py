@@ -371,6 +371,47 @@ class TestMaintainCacheRecovery(unittest.TestCase):
         )
 
 
+class TestModelNameNormalization(unittest.TestCase):
+    """Routed model names carry a provider prefix (`deepseek/deepseek-v4-flash`); the last
+    `/`-separated segment is the display key, so plain and prefixed names merge."""
+
+    def _write_record(self, path, ts_iso, model, tokens):
+        record = {
+            "type": "assistant",
+            "timestamp": ts_iso,
+            "message": {
+                "id": f"msg-{ts_iso}-{model}",
+                "model": model,
+                "usage": {"input_tokens": 0, "output_tokens": tokens, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+            },
+        }
+        with open(path, "a") as f:
+            f.write(json.dumps(record) + "\n")
+
+    def test_prefixed_and_plain_model_names_merge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = os.path.join(tmp, "projects", "p1")
+            os.makedirs(projects)
+            jsonl = os.path.join(projects, "session.jsonl")
+
+            ts = datetime.now().astimezone().replace(microsecond=0).isoformat()
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            self._write_record(jsonl, ts, "deepseek/deepseek-v4-flash", 100)
+            self._write_record(jsonl, ts, "deepseek-v4-flash", 50)
+            self._write_record(jsonl, ts, "claude-opus-4-7", 7)
+
+            daily = plugin.maintain_cache(tmp)
+
+        day = daily.get(today_str, {})
+        self.assertEqual(
+            day.get("deepseek-v4-flash", {}).get("output", 0),
+            150,
+            "provider-prefixed and plain model names must aggregate into one entry",
+        )
+        self.assertNotIn("deepseek/deepseek-v4-flash", day)
+        self.assertEqual(day.get("claude-opus-4-7", {}).get("output", 0), 7)
+
+
 class TestComputeTokens(unittest.TestCase):
     """compute_tokens always reports the actual total across all token categories."""
 

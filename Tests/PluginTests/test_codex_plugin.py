@@ -506,6 +506,22 @@ class TestParseSessionsForChart(unittest.TestCase):
 
         self.assertEqual(result["buckets"][0]["segments"], [])
 
+    def test_prefixed_and_plain_model_names_merge(self):
+        # Routed model names can carry a provider prefix (`openai/gpt-5`); the
+        # last `/`-separated segment is the key, so plain and prefixed names
+        # aggregate into a single segment.
+        events = [
+            {"type": "turn_context", "payload": {"model": "openai/gpt-5"}},
+            self._token_event({"total_tokens": 100}),
+            {"type": "turn_context", "payload": {"model": "gpt-5"}},
+            self._token_event({"total_tokens": 180}),
+        ]
+
+        result = self._parse_raw_lines([self._raw_line(event) for event in events])
+
+        segments = result["buckets"][0]["segments"]
+        self.assertEqual(segments, [{"model": "gpt-5", "tokens": 180}])
+
     def test_corrupted_model_name_is_not_fabricated(self):
         corrupted_context = b'{"type": "turn_context", "payload": {"model": "gpt-\xff5"}}'
         valid_context = self._raw_line({"type": "turn_context", "payload": {"model": "gpt-5"}})
