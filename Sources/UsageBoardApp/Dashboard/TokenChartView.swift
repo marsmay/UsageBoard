@@ -421,7 +421,7 @@ struct TokenMetricView: View {
                     .frame(width: 7, height: 7)
                 Text(title)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(UB.Text.supporting)
                     .lineLimit(1)
             }
 
@@ -434,7 +434,7 @@ struct TokenMetricView: View {
                     .minimumScaleFactor(0.75)
                 Text(formattedTokenNumber(value).unit)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(UB.Text.supporting)
             }
         }
         .padding(.horizontal, 6)

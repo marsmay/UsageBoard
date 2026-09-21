@@ -162,6 +162,7 @@ App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSSt
 - 设置窗口初始 800×520，最小 800×480；左侧导航栏宽 120，导航项图标 15 pt、文字 14 pt；插件列表宽 210。输入框和分段控件使用 regular 尺寸，开关使用 small，插件搜索框高 32 pt。
 - popover 固定宽 380，高度随内容缩放，上限为状态栏所在屏幕可用高度的 75%。OverviewView 使用纵向 fixedSize 支持收缩，MeasuredScrollView 按扣除标题等区域后的预算滚动。
 - DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。重置卡默认收起为数量与最近到期摘要，整行点击展开按到期时间排序的两列卡片明细（每排两张，奇数张时最后一张左对齐）；常态使用次级文字色，临近到期才着色。
+- 倒计时、重置时间、用量项目名称和图表统计标题/单位共用 `UB.Text.supporting`（主文字色的 75% 不透明度），保持深浅主题下的可读性。
 - UsageProgressBar 显式 color 优先；未指定或无法识别时，按进度 <60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红。status 不决定颜色。文字按已填充区域遮罩切色，黄/橙/绿底用黑字，蓝/红底用白字。
 - PlanTag 显示大写套餐名，前景色配同色淡背景；badgeColor 优先，否则按 PRO/PLUS/TEAM/FREE/MAX 等预设匹配。
 

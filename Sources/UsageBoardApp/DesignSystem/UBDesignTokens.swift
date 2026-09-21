@@ -22,4 +22,9 @@ enum UB {
         static let cardBackground = Color(nsColor: .textBackgroundColor)
         static let separator = Color(nsColor: .separatorColor)
     }
+
+    enum Text {
+        // 数据标签和时间需要在两种主题下保持可读，避免层级文字色过度淡化。
+        static let supporting = Color.primary.opacity(0.75)
+    }
 }

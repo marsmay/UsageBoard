@@ -9,7 +9,7 @@ struct CountdownLabel: View {
     var body: some View {
         Text(formatted)
             .font(UB.Font.countdown)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(UB.Text.supporting)
             .onReceive(sharedTick) { now = $0 }
     }
 

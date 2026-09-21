@@ -9,7 +9,7 @@ struct UsageItemRow: View {
         HStack(spacing: 12) {
             Text(item.name)
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(UB.Text.supporting)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: 92, alignment: .leading)
@@ -23,7 +23,7 @@ struct UsageItemRow: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(UB.Text.supporting)
                 .frame(width: 78, alignment: .trailing)
         }
         .padding(.vertical, 2)
