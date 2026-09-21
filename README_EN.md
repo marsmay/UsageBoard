@@ -1,38 +1,19 @@
 # UsageBoard
 
-**[中文](README.md)**
+**[中文](README.md)** · [Homepage](https://usageboard.may.ltd/)
 
-UsageBoard is a native macOS menu bar app that aggregates and displays usage quotas for APIs, model services, search services, proxy services, and more. Each data source is a plugin; the app periodically executes plugins, parses their stdout JSON, and renders usage as progress bars.
-
-## Features
-
-- Resides in the menu bar; click the icon to open a quick preview.
-- Supports grouped and tabbed display modes.
-- Supports manual refresh, scheduled refresh, per-card refresh, and a quit button. Quitting waits for pending configuration saves; if they take longer than 5 seconds, the quit is cancelled and can be retried after saving completes.
-- Scheduled refresh pauses during system sleep and resumes on wake.
-- Plugin-based usage queries with per-plugin configurable refresh intervals and parameters.
-- Plugin icons support local resources and cached remote images; bundled icons work offline and follow the light/dark theme.
-- Subscription badges colored by plan or plugin configuration.
-- Plugin settings UI auto-generated from script metadata, including segmented controls, directory pickers, and file pickers.
-- New plugins are disabled by default; required parameters are checked before enabling.
-- Plugin data cached to disk by `stateID`; last successful data shown on launch.
-- Bundled plugin symlinks are checked on every launch; add the desired plugins in Settings before enabling them.
-- Settings fields support standard editing shortcuts: undo/redo (⌘Z / ⇧⌘Z), cut/copy/paste (⌘X / ⌘C / ⌘V), and select all (⌘A).
-- Settings supports an immediately applied light/dark/system theme, launch at login, a new-version badge (on by default, can be disabled in General settings), plugin drag-and-drop reordering, plugin help docs, update checking, and in-app updates. Updates are checked automatically every 6 hours in the background; when an update is available and the badge is enabled, the menu bar popover shows a new-version capsule — click it or check for updates in About to open the prompt panel. The non-modal update panel refreshes its version and notes when check results change, and closes when no update is available. Actions are disabled during checks, and installation requires the displayed update to match the current result. Panel buttons show download, installation, or failure status; details are available in About.
-- Usage display supports percentage or ratio, reset time, progress bar colors, and token usage charts with line or stacked bar modes.
-- Plugins can return failures as `{"error": "message"}`; the error is shown directly in the card body.
-- Supports Chinese and English; both app UI and plugin metadata display in the selected language.
+UsageBoard is a native macOS menu bar app that aggregates quotas, balances, and local usage statistics from APIs, model services, and search services via plugins. The app periodically executes plugins, parses their stdout JSON, and renders usage as progress bars and charts.
 
 ## Screenshots
 
 <table>
   <tr>
     <td><img src="Screenshots/tabs-claude.jpg" alt="Claude Tab" width="360" /></td>
-    <td><img src="Screenshots/tabs-minimax.jpg" alt="MiniMax Tab" width="360" /></td>
+    <td><img src="Screenshots/tabs-codex.jpg" alt="Codex Tab" width="360" /></td>
   </tr>
   <tr>
     <td align="center">Claude Tab</td>
-    <td align="center">MiniMax Tab</td>
+    <td align="center">Codex Tab</td>
   </tr>
   <tr>
     <td><img src="Screenshots/grouped.jpg" alt="Grouped View" width="360" /></td>
@@ -52,6 +33,36 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
   </tr>
 </table>
 
+## Features
+
+- Lives in the menu bar; click the icon to open the panel. Grouped or tabbed layouts with drag-and-drop card ordering.
+- Progress bars change color with usage; supports percentage or ratio display, reset times, and subscription plan badges.
+- Token usage charts switch between line and stacked bar modes.
+- Manual, scheduled (per-plugin interval), and per-card refresh; scheduled refresh pauses during system sleep and resumes on wake.
+- Plugin data is cached to disk by `stateID`; the last successful data is shown on launch. A plugin can report failure as `{"error": "…"}`, shown directly in the card body.
+- Settings forms are generated from script metadata, including segmented controls and directory/file pickers; new plugins are disabled by default and required parameters are validated before enabling.
+- Light, dark, or system theme applied immediately; bundled plugin icons work offline and follow the theme.
+- Chinese and English UI; settings fields support standard editing shortcuts (⌘Z / ⇧⌘Z / ⌘X / ⌘C / ⌘V / ⌘A).
+- Optional launch at login; background update checks every 6 hours, with a menu bar capsule for new versions and a non-modal panel for download and installation.
+- Quitting waits for pending configuration saves; if saving takes longer than 5 seconds, the quit is cancelled and can be retried once saving completes.
+
+## Installation
+
+Requires macOS 13.0 or later and a system-available `python3` (used to execute plugins).
+
+```bash
+brew tap marsmay/usageboard
+brew install --cask usageboard
+```
+
+On first launch, macOS may show a "cannot verify developer" warning. Open **System Settings → Privacy & Security** and click **Open Anyway**, or run:
+
+```bash
+xattr -cr /Applications/UsageBoard.app
+```
+
+After installation, add and enable the plugins you need under **Settings → Plugins**.
+
 ## Bundled Plugins
 
 | Plugin | Script | Purpose |
@@ -65,120 +76,38 @@ UsageBoard is a native macOS menu bar app that aggregates and displays usage quo
 | Tavily | `tavily-usage-plugin.py` | Query Tavily Search monthly usage |
 | Command Code | `commandcode-usage-plugin.py` | Query subscription 5-hour, weekly, and monthly usage |
 
-Bundled plugin source files are in [Resources/BundledPlugins](Resources/BundledPlugins), including the shared `_common.py` helpers. After packaging, they reside in the app bundle at `Contents/Resources/Plugins/`.
+Plugin sources live in [Resources/BundledPlugins](Resources/BundledPlugins) with the shared `_common.py` module; after packaging they reside at `Contents/Resources/Plugins/`. Bundled icons live in [Resources/icons](Resources/icons) — light/dark sets that work offline and follow the theme; the `icon` field uses resource-relative paths such as `icons/light/kimi.png`.
 
-Bundled icons in [Resources/icons](Resources/icons) are packaged into `Contents/Resources/icons/`. Metadata uses resource-relative paths such as `icons/light/kimi.png`; icons are available offline.
+Per-plugin notes:
 
-Command Code: enter `API_KEY` in plugin settings. Manual script runs can also use the `COMMAND_API_KEY` environment variable (the setting takes precedence). The undocumented `/alpha/billing/credits` endpoint supplies quotas; `/alpha/billing/subscriptions` enriches the plan and monthly reset time. The monthly cap is temporarily estimated as **2 × the weekly cap**; monthly spend is `max(monthly cap − monthlyCredits, 0)`, excluding purchased credits. The three rows display percentages: “5-hour usage”, “Weekly usage”, and “Monthly usage”. If the weekly window is missing or its cap is non-positive, the monthly estimate is omitted. If the subscription request fails, quotas remain available without the plan badge or monthly reset. The app does not source shell configuration; enter the key in settings. GO / GOAT / MAX badges use teal / blue / orange respectively.
+- **Zhipu**: uses the domestic API endpoint and accepts both Zhipu and ZAI Coding Plan keys. `STAT_PERIOD` supports `none` / `7d` / `15d` / `30d`; `none` disables local stats.
+- **Claude**: fetches subscription usage via the OAuth API. Setting `PLAN` to `none` skips the API call and returns only local JSONL stats; when both plan and stats period are `none`, the card shows a "No usage data" placeholder. Local token totals sum actual input, output, cache creation, and cache read usage. `CLAUDE_ONLY` filters out third-party models; `DATA_DIR` points at the data directory (default `~/.claude`); `STAT_PERIOD` as above.
+- **Codex**: `AUTH_FILE` (default `~/.codex/auth.json`) and `DATA_DIR` (default `~/.codex`) are independent — changing the stats directory does not change the authentication path. Lists the account's currently usable rate-limit reset cards; query failures never affect quota display. `STAT_PERIOD` as above.
+- **DeepSeek**: `LIMIT` sets the displayed balance cap; the progress bar is colored by the balance-to-limit ratio.
+- **Kimi**: queries the 5-hour rolling window and weekly usage. Select the subscription plan manually — Andante / Moderato / Allegretto / Allegro (gray / indigo / blue / orange badges; defaults to Andante). A valid manual setting takes precedence over API membership data, and the badge is omitted when it cannot be determined; current API responses may no longer include membership level, so manual selection is recommended.
 
-## Runtime Directory
-
-UsageBoard uses:
-
-```text
-~/Library/Application Support/UsageBoard/
-```
-
-Contents:
-
-- `config.json`: Main configuration file, including plugin parameters, saved with owner-only permissions (0600).
-- `plugins/`: User plugin directory. The file picker defaults to this location when adding plugins.
-- `states/`: Successful plugin snapshots saved by the app.
-- `plugin-caches/`: Default GLM stats cache, separated by an API key hash prefix. Claude/Codex incremental stats are stored separately at `DATA_DIR/.usageboard-chart-cache.json`.
-
-On launch, the app creates symlinks in `plugins/` pointing to bundled plugins from `Contents/Resources/Plugins/` inside the app bundle, excluding internal modules whose names start with `_` (or `Resources/BundledPlugins/` during development). Existing regular files with matching names are preserved; existing symlinks are refreshed when the app moves. Replace a bundled symlink with a standalone script to customize it.
-
-`icon` accepts HTTP(S) URLs, absolute file paths, `file://` URLs, and resource-relative paths. Relative paths resolve against the app bundle’s `Contents/Resources/`, or the current directory’s `Resources/` during development. For relative `icons/light/` paths, dark mode prefers a same-name `icons/dark/` file and falls back to light if missing. Load failures show the name’s initial.
-
-Remote icons have a 2 MiB transfer cap, a 10-second inactivity timeout, and a 20-second total timeout; oversized or failed loads keep the placeholder. This does not limit decoded pixel memory.
-
-## Configuration
-
-Main configuration JSON structure:
-
-```json
-{
-  "schemaVersion": 1,
-  "language": "zh-Hans",
-  "theme": "system",
-  "overviewDisplayMode": "tabs",
-  "chartMode": "line",
-  "launchAtLogin": false,
-  "plugins": [
-    {
-      "stateID": "stable-cache-id",
-      "name": "Example",
-      "enabled": false,
-      "executablePath": "/absolute/path/to/example-plugin.py",
-      "refreshIntervalSeconds": 300,
-      "metadata": {
-        "name": "Example",
-        "description": "Example plugin",
-        "description@zh-Hans": "示例插件",
-        "description@en": "Example plugin",
-        "parameters": [
-          {
-            "name": "API_KEY",
-            "label": "API Key",
-            "label@zh-Hans": "Api Key",
-            "label@en": "API Key",
-            "type": "secret",
-            "required": true,
-            "placeholder": "Service API Key"
-          },
-          {
-            "name": "STAT_PERIOD",
-            "label": "Stats Period",
-            "label@zh-Hans": "统计周期",
-            "label@en": "Stats Period",
-            "type": "choice",
-            "required": true,
-            "defaultValue": "7d",
-            "options": [
-              {"label": "7 days", "label@zh-Hans": "7 天", "label@en": "7 days", "value": "7d"},
-              {"label": "15 days", "label@zh-Hans": "15 天", "label@en": "15 days", "value": "15d"},
-              {"label": "30 days", "label@zh-Hans": "30 天", "label@en": "30 days", "value": "30d"}
-            ]
-          }
-        ]
-      },
-      "parameterValues": {
-        "API_KEY": "",
-        "STAT_PERIOD": "7d"
-      }
-    }
-  ]
-}
-```
-
-Notes:
-
-- `overviewDisplayMode` supports `grouped` and `tabs`.
-- `chartMode` supports `line` and `bar`; older configurations default to `line`.
-- `theme` supports `light`, `dark`, and `system`; missing values default to `system`. Changes apply immediately and persist across launches.
-- `language` supports `zh-Hans` and `en`; takes effect after restart.
-- `launchAtLogin` controls launch at login.
-- `plugins[].stateID` is a persistent cache ID; editing the script path, parameters, or metadata in Settings generates a new ID.
-- `plugins[].executablePath` must be an actual file path; `~` and shell expressions are not expanded. Use the file picker to select it.
-- `plugins[].enabled` — when `false`, the plugin is not executed.
-- `plugins[].metadata` is typically parsed from the script header comment block.
-- `plugins[].parameterValues` stores parameter values from the settings UI.
+Implementation details: GLM and Codex chart caches (version 2) rebuild the previous 30 days once when upgrading an older cache, then resume incremental updates. Claude, Codex, and Zhipu stats caches are written atomically — a failed write preserves the previous complete cache. Codex decodes UTF-8 line by line and skips corrupted lines entirely. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the compatibility behavior.
 
 ## Plugin Development
 
-Plugins are recommended to use Python scripts. UsageBoard executes `.py` plugins with:
+Python scripts are recommended. The app executes `.py` plugins with:
 
 ```text
 /usr/bin/env python3 /path/to/plugin.py --usageboard-param KEY=value --usageboard-param USAGEBOARD_LANGUAGE=en
 ```
 
-Plugins must output valid JSON to stdout. Plugin stdout is limited to 8 MiB; stderr retains at most 64 KiB. The default timeout is 15 seconds. Timeout, cancellation, or excessive stdout terminates the plugin process. Python bytecode caching is disabled to keep the app bundle unchanged. stderr can be used for debugging; non-zero exit codes, timeouts, or invalid JSON will show as plugin errors. Plugins can also write `{"error": "message"}` to stdout and exit with code 0 to report a failure, and UsageBoard shows that error in the plugin card body.
+Constraints and behavior:
 
-See the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html) for complete documentation.
+- Default timeout is 15 seconds; stdout is capped at 8 MiB and stderr retains at most 64 KiB. Timeout, cancellation, or excessive stdout terminates the plugin process group (SIGTERM first, then SIGKILL after at most 1 second) — plugins must not depend on descendants outliving a run.
+- Python bytecode caching is disabled to keep the app bundle unchanged.
+- A non-zero exit code, timeout, or invalid stdout JSON shows as a plugin error. Alternatively, output `{"error": "message"}` with exit code 0 to report a failure; the message is shown in the card body.
+- `USAGEBOARD_LANGUAGE` is a reserved parameter (`zh-Hans` / `en`); scripts should read it and return display text in the corresponding language.
+
+See the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html) (bundled with the app) for the full protocol.
 
 ### Parameter Metadata
 
-Place the complete `UsageBoardPlugin` JSON comment block, including its closing marker, within the first 80 lines of the script. UsageBoard reads this block and generates a settings form:
+Place the complete `UsageBoardPlugin` JSON comment block, including its closing marker, within the first 80 lines of the script. UsageBoard reads it and generates a settings form:
 
 ```python
 #!/usr/bin/env python3
@@ -188,51 +117,25 @@ Place the complete `UsageBoardPlugin` JSON comment block, including its closing 
 #   "icon": "https://example.com/icon.png",
 #   "description": "Example plugin",
 #   "description@zh-Hans": "示例插件",
-#   "description@en": "Example plugin",
 #   "parameters": [
 #     {
 #       "name": "API_KEY",
 #       "label": "API Key",
-#       "label@zh-Hans": "Api Key",
-#       "label@en": "API Key",
 #       "type": "secret",
 #       "required": true,
 #       "placeholder": "Service API Key"
-#     },
-#     {
-#       "name": "STAT_PERIOD",
-#       "label": "Stats Period",
-#       "label@zh-Hans": "统计周期",
-#       "label@en": "Stats Period",
-#       "type": "choice",
-#       "required": true,
-#       "defaultValue": "7d",
-#       "options": [
-#         {"label": "7 days", "label@zh-Hans": "7 天", "label@en": "7 days", "value": "7d"},
-#         {"label": "15 days", "label@zh-Hans": "15 天", "label@en": "15 days", "value": "15d"},
-#         {"label": "30 days", "label@zh-Hans": "30 天", "label@en": "30 days", "value": "30d"}
-#       ]
 #     }
 #   ]
 # }
 # /UsageBoardPlugin
 ```
 
-Display-related plugin metadata fields support locale-specific variants, e.g. `name@zh-Hans`, `name@en`, `description@zh-Hans`, `description@en`, `label@zh-Hans`, `label@en`, `placeholder@zh-Hans`, `placeholder@en`. If the field for the current language is missing or empty, UsageBoard falls back to the base field without a language suffix.
+- Parameter types: `string`, `secret`, `integer`, `boolean`, `choice`, `directory`, `file`. `choice` renders as a segmented control when space permits (menu otherwise); `directory` / `file` render as a path field with the corresponding picker.
+- Display fields support `@zh-Hans` / `@en` locale variants (e.g. `name@en`, `label@zh-Hans`, `placeholder@en`); when the current language's field is missing or empty, the base field is used.
 
-Supported parameter types:
+### Reading Parameters
 
-- `string`
-- `secret`
-- `integer`
-- `boolean`
-- `choice`
-- `directory`
-- `file`
-
-`choice` parameters use equal-width segmented controls with an accent-colored selection when space permits and a menu otherwise; `directory` parameters render as a path field with a folder picker; `file` parameters render as a path field with a file picker.
-
-Bundled plugins reuse the shared `_common.py` helpers (standalone user plugins need `_common.py` alongside the script, or the standalone implementation in the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html)):
+Bundled plugins reuse `_common.py` (standalone user plugins need `_common.py` alongside the script, or the standalone implementation in the authoring guide):
 
 ```python
 import sys
@@ -256,11 +159,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-`_common.py` provides parameter parsing (`parse_usageboard_params`), language detection (`app_language`), a translation factory (`make_translator`), output helpers (`success`/`failure`), color/status helpers (`color_for`/`status_for`/`numeric`), and unified HTTP error handling (`handle_http_error`/`handle_url_error`). New plugins should reuse these instead of reimplementing them; see the `_common.py` source for the full list of shared helpers.
-
-UsageBoard also passes the current app language: `--usageboard-param USAGEBOARD_LANGUAGE=zh-Hans` or `--usageboard-param USAGEBOARD_LANGUAGE=en`. Scripts should read this reserved parameter and return display text in the corresponding language.
-
-Plugin runs have a default 15-second timeout and an 8 MiB stdout cap. After a run ends, including normal parent exit, descendants in the confirmed plugin process group receive SIGTERM and up to one second to clean up before SIGKILL. Plugins must not depend on descendants continuing after a run.
+`_common.py` provides parameter parsing (`parse_usageboard_params`), language detection (`app_language`), a translation factory (`make_translator`), output helpers (`success` / `failure`), color and status helpers (`color_for` / `status_for` / `numeric`), and unified HTTP error handling (`handle_http_error` / `handle_url_error`). See its source for the full list.
 
 ### Response Data Format
 
@@ -299,122 +198,105 @@ Plugin runs have a default 15-second timeout and an 8 MiB stdout cap. After a ru
 }
 ```
 
-Failures can also return:
+On failure:
+
+```json
+{ "error": "Invalid API Key. Check your settings." }
+```
+
+Field summary (see the authoring guide for full field details):
+
+- `updatedAt` and `items[]`: required. `used` / `limit` / `displayStyle` (`percent` or `ratio`) / `resetAt` / `status` / `color` control each usage row; without a color, the bar follows the usage ratio (blue below 60%, yellow from 60% to below 80%, orange from 80% to below 100%, red at 100%).
+- `badge` / `badgeColor`: optional title badge. `badgeColor` supports `blue`, `orange`, `gray` (or `grey`), `indigo`, `purple`, `teal`, `green`, `red`, `yellow`; absent values fall back to a text-based preset.
+- `credits`: optional array of quota reset cards; include only currently usable cards and omit the field entirely when the query fails.
+- `chart`: optional token usage chart using the `kind: "line"` structure with per-bucket model segments; the global `chartMode` selects line or bar rendering, and `chart.message` can carry a hint when stats are empty.
+- `error`: optional top-level error; when present and non-empty, the run is treated as failed and the text is shown in the card body.
+
+## Runtime Directory
+
+```text
+~/Library/Application Support/UsageBoard/
+```
+
+- `config.json`: main configuration (including plugin parameters), saved with owner-only permissions (0600).
+- `plugins/`: user plugin directory; the file picker defaults here when adding plugins.
+- `states/`: successful plugin snapshots saved by the app.
+- `plugin-caches/`: Zhipu stats cache, separated by API key hash prefix; Claude/Codex incremental stats caches live at `DATA_DIR/.usageboard-chart-cache.json` instead.
+
+On launch, the app creates symlinks in `plugins/` for bundled plugins (excluding internal modules starting with `_`), pointing at `Contents/Resources/Plugins/` inside the app bundle (or the project's `Resources/BundledPlugins/` during development). Existing regular files with matching names are preserved; existing symlinks are refreshed when the app moves. Replace a symlink with a standalone script to customize a bundled plugin.
+
+`icon` accepts HTTP(S) URLs, absolute file paths, `file://` URLs, and resource-relative paths. Relative paths resolve against the app bundle's `Contents/Resources/` (or the current directory's `Resources/` during development); for `icons/light/` paths, dark mode prefers a same-name `icons/dark/` file and falls back to light, and load failures show the name's initial. Remote icons are limited to 2 MiB with a 10-second inactivity timeout and a 20-second total timeout (transfer bytes only — not decoded pixel memory); oversized or failed loads keep the placeholder.
+
+## Configuration
+
+Main configuration JSON structure:
 
 ```json
 {
-  "error": "Invalid API Key. Check your settings."
+  "schemaVersion": 1,
+  "language": "zh-Hans",
+  "theme": "system",
+  "overviewDisplayMode": "tabs",
+  "chartMode": "line",
+  "launchAtLogin": false,
+  "plugins": [
+    {
+      "stateID": "stable-cache-id",
+      "name": "Example",
+      "enabled": false,
+      "executablePath": "/absolute/path/to/example-plugin.py",
+      "refreshIntervalSeconds": 300,
+      "metadata": {
+        "name": "Example",
+        "description": "Example plugin",
+        "parameters": [
+          {
+            "name": "API_KEY",
+            "label": "API Key",
+            "type": "secret",
+            "required": true
+          }
+        ]
+      },
+      "parameterValues": {
+        "API_KEY": ""
+      }
+    }
+  ]
 }
 ```
 
-Field summary (see the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html) for the full protocol and field details):
-
-- `updatedAt` and `items[]`: required. `used`/`limit`/`displayStyle` (`percent` or `ratio`)/`resetAt`/`status`/`color` control each usage row; when no color is specified, the progress bar follows the usage ratio (blue below 60%, yellow from 60% to below 80%, orange from 80% to below 100%, red at 100%).
-- `badge` / `badgeColor`: optional card title badge. `badgeColor` supports `blue`, `orange`, `gray` (or `grey`), `indigo`, `purple`, `teal`, `green`, `red`, `yellow`; absent values fall back to a text-based preset (e.g. PRO/MAX).
-- `credits`: optional array of quota reset cards (e.g. Codex rate-limit resets). Include only currently usable cards; omit the field entirely when the query fails so other data is unaffected.
-- `chart`: optional token usage chart. Use the `kind: "line"` structure with per-bucket model segments; the global `chartMode` selects line or bar rendering, and `chart.message` can carry a hint when stats are empty.
-- `error`: optional top-level error message. When present and non-empty, the run is treated as failed and the text is shown in the card body.
-
-GLM and Codex chart cache version 2 rebuilds the previous 30 days once when upgrading an older cache, then resumes incremental updates. Codex skips entire invalid UTF-8 lines while continuing with later valid events. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the existing compatibility behavior.
-
-The bundled Zhipu, Claude, and Codex plugins provide a `STAT_PERIOD` parameter supporting `none`, `7d`, `15d`, and `30d`; selecting none disables local stats. The Zhipu plugin uses the domestic API endpoint and is compatible with both Zhipu and ZAI Coding Plan keys. The Claude plugin fetches subscription usage via OAuth API; its `PLAN` parameter supports a `none` option that skips the API call and returns only local JSONL stats. When both the plan and the stats period are set to none, the plugin returns no data and its card shows a "No usage data" placeholder, with errors shown if a refresh fails. Local token totals sum actual input, output, cache creation, and cache read usage. It also supports a `CLAUDE_ONLY` toggle to filter third-party models and can use `DATA_DIR` to point at the `~/.claude` data directory. The Codex plugin reads authentication from the independent `AUTH_FILE` parameter (default `~/.codex/auth.json`) and uses `DATA_DIR` for session stats (default `~/.codex`). Changing the stats directory does not change the authentication path. Both Claude and Codex plugins use an incremental caching strategy stored in the data directory and re-scan the last cached day and subsequent days on every run. The DeepSeek plugin provides a `LIMIT` parameter for the displayed balance limit and colors the progress bar by the balance-to-limit ratio. The Codex plugin also lists the account's available rate-limit reset cards, showing the count and next expiry in a compact summary that expands into a two-column grid of cards with expiry and remaining validity; the query adds at most 2 seconds of waiting within the plugin’s remaining time budget, and timeout or failure omits the cards without affecting quota display. The Kimi plugin queries Kimi Code's 5-hour rolling window and weekly usage. Select Andante, Moderato, Allegretto, or Allegro in Subscription Plan; their badges retain gray, indigo, blue, and orange respectively. Settings default to Andante; choose your actual subscription. A valid `PLAN` setting takes precedence over API membership data; absent or invalid settings fall back to the legacy membership mapping, omitting an unknown badge. Current API key responses may no longer include `user.membership.level`, so selecting the plan manually is recommended.
-
-Claude, Codex, and GLM share atomic cache writes; a failed write preserves the previous complete cache.
-
-## Installation
-
-Install via Homebrew:
-
-```bash
-brew tap marsmay/usageboard
-brew install --cask usageboard
-```
-
-On first launch, macOS may show a "cannot verify developer" warning. Open **System Settings → Privacy & Security** and click **Open Anyway**, or run:
-
-```bash
-xattr -cr /Applications/UsageBoard.app
-```
-
-## System Requirements
-
-Runtime:
-
-- macOS 13.0 or later
-- System `python3` available for executing Python plugins
-
-Development:
-
-- Xcode
-- Swift 6.3 toolchain
+- `overviewDisplayMode`: `grouped` / `tabs`; `chartMode`: `line` / `bar` (older configurations default to `line`); `theme`: `light` / `dark` / `system` (missing values default to `system`) — theme changes apply immediately and persist.
+- `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login.
+- `plugins[].stateID` is a persistent cache ID; editing the script path, parameters, or metadata generates a new one.
+- `plugins[].executablePath` must be an actual file path; `~` and shell expressions are not expanded — use the file picker.
+- `plugins[].enabled`: when `false`, the plugin is not executed. `plugins[].metadata` is typically parsed from the script header comment block; `plugins[].parameterValues` stores values from the settings UI.
 
 ## Build & Test
 
-Debug build:
+Development requires Xcode and the Swift 6.3 toolchain:
 
 ```bash
-swift build
+swift build                                 # Debug build
+swift test                                  # Swift tests
+python3 -m pytest Tests/PluginTests -q      # Plugin tests (requires pytest; uses temporary data and network doubles — no real credentials)
+swift build -c release                      # Release build
+bash scripts/build.sh                       # Build, sign, and launch dist/UsageBoard.app locally
 ```
 
-Run tests:
-
-```bash
-swift test
-python3 -m pytest Tests/PluginTests -q
-```
-
-Python tests require pytest and use temporary data and network doubles; real account credentials are not required.
-
-Release build:
-
-```bash
-swift build -c release
-```
-
-Build, sign, and launch `dist/UsageBoard.app` locally:
-
-```bash
-bash scripts/build.sh
-```
-
-`scripts/build.sh` stops any running UsageBoard instance, builds a release, copies the binary, bundled plugins, help document, and icons into `dist/UsageBoard.app`, injects the update check URL into Info.plist via PlistBuddy, performs ad-hoc signing, and launches the app. The `UB_UPDATE_CHECK_URL` environment variable can be used to customize the update check URL.
+`scripts/build.sh` stops any running UsageBoard instance, builds a release, copies the binary, bundled plugins, help document, and icons into `dist/UsageBoard.app`, injects the update check URL (overridable via `UB_UPDATE_CHECK_URL`), performs ad-hoc signing, and launches the app.
 
 ## Release
 
-The release script uploads directly to the server; run it only when publishing. Without a version argument it increments the local app bundle’s patch version, not the latest release tag. For releases, check the latest tag and pass the intended version explicitly.
-
-```bash
-bash scripts/release.sh
-```
-
-Specify a version and release notes (replace the placeholders; notes can contain actual newlines):
+The release script uploads directly to the server — run it only when publishing. Check the latest tag and pass the intended version explicitly (without a version argument it increments the local bundle's patch version):
 
 ```text
 bash scripts/release.sh <version> "<release notes>"
 ```
 
-The release script:
+The script builds a release, writes the version and build number, copies resources, signs, generates `UsageBoard-<version>.zip` and `version.json` (release notes default to commits since the last tag), uploads to the server, and prunes old remote zips (keeping the latest three).
 
-1. Reads the current version from `dist/UsageBoard.app/Contents/Info.plist`.
-2. Uses the specified version or increments that local version’s patch (initializing a missing bundle at 0.1.0, so the first automatic release is 0.1.1).
-3. Auto-generates release notes from commits since the last release tag (or accepts manual notes as the second argument).
-4. Builds a release, then writes the target version and build number; a build failure preserves the existing bundle version and binary.
-5. Copies the binary, bundled plugins, help document, and icons.
-6. Injects the update check URL into Info.plist via PlistBuddy.
-7. Re-signs and verifies the app.
-8. Generates `UsageBoard-<version>.zip`.
-9. Generates `version.json`.
-10. Uploads to the configured server path.
-11. Cleans up old remote zips, retaining the latest three.
-
-The script does not create or push Git tags, publish GitHub Releases, or update the Homebrew cask. Complete those steps separately and verify matching versions and ZIP SHA-256 values across the local artifact, server, GitHub, and cask. Stop the existing UsageBoard instance before publishing; unlike build.sh, release.sh does not stop or launch the app.
-
-Release artifacts:
-
-- `dist/UsageBoard-<version>.zip`
-- `dist/version.json`
-
-Update ZIP downloads have a 64 MiB transfer cap, a 60-second inactivity timeout, and a 300-second total timeout. Failed or cancelled downloads remove their temporary ZIP. This does not enforce an extraction quota or authenticate the publisher; the existing ad-hoc signing flow is unchanged.
+It does not create or push Git tags, publish GitHub Releases, or update the Homebrew cask — complete those steps separately and verify matching versions and zip SHA-256 values across channels. Stop the existing UsageBoard instance before publishing; unlike build.sh, release.sh does not stop or launch the app.
 
 ## Project Structure
 
@@ -430,13 +312,12 @@ Tests/
 Resources/
   BundledPlugins/       Bundled Python plugins
   icons/                Local light/dark plugin icons
-  IconSources/          Retained icon source assets
   PluginAuthoringGuide.html
   UsageBoard.icns
 scripts/
   build.sh              Local build, sign, and launch
   release.sh            Server release script
-  prepare_codex_icon.py  Regenerate Codex icons from source (requires Pillow)
+website/                Project homepage static files
 dist/
   UsageBoard.app        Local test app bundle
 ```

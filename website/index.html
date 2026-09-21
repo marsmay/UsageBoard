@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UsageBoard — macOS 菜单栏用量面板</title>
+<meta name="description" content="UsageBoard 是原生 macOS 菜单栏应用，通过插件聚合展示 API、模型服务等各类用量配额。">
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --bg-soft: #10131a;
+    --card: #141821;
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #eef2f8;
+    --muted: #8b94a7;
+    --accent: #4c8dff;
+    --accent-2: #6fb2ff;
+    --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+      "Helvetica Neue", "Segoe UI", sans-serif;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* 顶部导航 */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(16px);
+    background: rgba(10, 12, 16, 0.72);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 60px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+  .brand img { width: 26px; height: 26px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--muted); align-items: center; }
+  .nav-links a:hover { color: var(--text); }
+  .gh-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 16px; border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    font-size: 14px; font-weight: 500;
+    transition: background .2s, border-color .2s;
+  }
+  .gh-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); }
+
+  /* Hero */
+  .hero { padding: 96px 0 80px; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40% -20% auto; height: 640px;
+    background: radial-gradient(closest-side, rgba(76, 141, 255, 0.22), transparent 70%);
+    pointer-events: none;
+  }
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; position: relative; }
+  .badge {
+    display: inline-block; padding: 4px 14px; border-radius: 999px;
+    border: 1px solid rgba(111, 178, 255, 0.35);
+    color: var(--accent-2); font-size: 13px; margin-bottom: 22px;
+    background: rgba(76, 141, 255, 0.08);
+  }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.18; letter-spacing: -0.02em; font-weight: 700; }
+  h1 .grad {
+    background: linear-gradient(120deg, #6fb2ff, #4c8dff 55%, #8ab8ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.sub { color: var(--muted); font-size: 17px; margin: 20px 0 32px; max-width: 46ch; }
+  .actions { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .btn-primary {
+    padding: 12px 26px; border-radius: 12px; font-weight: 600; font-size: 15px;
+    background: linear-gradient(135deg, #5a9bff, #3b6fe0);
+    box-shadow: 0 8px 28px rgba(76, 141, 255, 0.35);
+    transition: transform .15s, box-shadow .2s;
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(76, 141, 255, 0.45); }
+  .btn-ghost {
+    padding: 12px 26px; border-radius: 12px; font-weight: 500; font-size: 15px;
+    border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: background .2s;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.09); }
+  .install-hint { margin-top: 26px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--muted); }
+  .install-hint code {
+    display: inline-block; padding: 8px 14px; border-radius: 8px;
+    background: var(--card); border: 1px solid var(--border); color: #a9c6ff;
+  }
+  .hero-shot { text-align: center; }
+  .hero-shot img {
+    width: 100%; max-width: 340px; border-radius: 24px;
+    border: 1px solid var(--border);
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 80px rgba(76, 141, 255, 0.12);
+  }
+
+  section { padding: 80px 0; }
+  .sec-head { text-align: center; margin-bottom: 52px; }
+  .sec-head h2 { font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -0.01em; }
+  .sec-head p { color: var(--muted); margin-top: 12px; font-size: 16px; }
+
+  /* 特性 */
+  .features { background: var(--bg-soft); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px 26px;
+    transition: border-color .2s, transform .2s;
+  }
+  .feature:hover { border-color: rgba(111, 178, 255, 0.35); transform: translateY(-3px); }
+  .feature .icon {
+    width: 42px; height: 42px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(76, 141, 255, 0.12); color: var(--accent-2);
+    font-size: 20px; margin-bottom: 16px;
+  }
+  .feature h3 { font-size: 16px; margin-bottom: 8px; }
+  .feature p { font-size: 14px; color: var(--muted); }
+
+  /* 截图 */
+  .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .shot { text-align: center; }
+  .shot .frame {
+    height: 480px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+    transition: transform .25s, border-color .25s;
+  }
+  .shot .frame:hover { transform: translateY(-6px); border-color: rgba(111, 178, 255, 0.3); }
+  .shot .frame img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .shot.wide { grid-column: 1 / -1; }
+  .shot.wide .frame { height: auto; }
+  .shot.wide .frame img { width: 100%; max-width: 720px; }
+  .shot figcaption { margin-top: 14px; font-size: 14px; color: var(--muted); }
+
+  /* 插件 */
+  .plugins { background: var(--bg-soft); border-top: 1px solid var(--border); }
+  .chips { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 760px; margin: 0 auto; }
+  .chip {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 18px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--border);
+    font-size: 14px; font-weight: 500;
+  }
+  .chip img { width: 18px; height: 18px; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .plugin-note { text-align: center; color: var(--muted); font-size: 14px; margin-top: 28px; }
+  .plugin-note a { color: var(--accent-2); }
+
+  /* 安装 */
+  .install-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 40px; max-width: 680px; margin: 0 auto;
+  }
+  .install-card .step { display: flex; gap: 16px; margin-bottom: 26px; }
+  .install-card .step:last-child { margin-bottom: 0; }
+  .step .num {
+    flex: none; width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(76, 141, 255, 0.15); color: var(--accent-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+  }
+  .step p { font-size: 14.5px; color: var(--muted); }
+  .step p strong { color: var(--text); font-weight: 600; }
+  .step pre {
+    margin-top: 10px; padding: 12px 16px; border-radius: 10px;
+    background: #0b0e14; border: 1px solid var(--border);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; color: #a9c6ff; overflow-x: auto;
+  }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 36px 0;
+    color: var(--muted); font-size: 14px;
+  }
+  footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+  footer a { color: var(--accent-2); }
+
+  @media (max-width: 860px) {
+    .hero .wrap { grid-template-columns: 1fr; text-align: center; }
+    .hero p.sub { margin-left: auto; margin-right: auto; }
+    .actions { justify-content: center; }
+    .grid { grid-template-columns: 1fr 1fr; }
+    .shots { grid-template-columns: 1fr 1fr; }
+    .nav-links a:not(.gh-btn) { display: none; }
+  }
+  @media (max-width: 560px) {
+    .grid, .shots { grid-template-columns: 1fr; }
+    .shot .frame { height: 420px; }
+    .shot.wide .frame { height: auto; }
+    .install-card { padding: 28px 22px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/icon.png" alt="UsageBoard">UsageBoard</a>
+    <div class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#screenshots">截图</a>
+      <a href="#plugins">插件</a>
+      <a href="#install">安装</a>
+      <a class="gh-btn" href="https://github.com/marsmay/UsageBoard" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="badge">原生 macOS 菜单栏应用</span>
+      <h1>所有服务的<br><span class="grad">用量配额</span>，一目了然</h1>
+      <p class="sub">UsageBoard 以插件方式聚合 API、模型、搜索与代理服务的配额和用量统计，常驻菜单栏，点击即见。</p>
+      <div class="actions">
+        <a class="btn-primary" href="https://github.com/marsmay/UsageBoard/releases" target="_blank" rel="noopener">下载最新版本</a>
+        <a class="btn-ghost" href="https://github.com/marsmay/UsageBoard" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          查看源码
+        </a>
+      </div>
+      <div class="install-hint"><code>brew install --cask marsmay/usageboard/usageboard</code></div>
+    </div>
+    <div class="hero-shot">
+      <img src="assets/grouped.jpg" alt="UsageBoard 分组展示">
+    </div>
+  </div>
+</header>
+
+<section class="features" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>为效率而生的细节</h2>
+      <p>从刷新调度到展示形式，每一处都为菜单栏场景打磨</p>
+    </div>
+    <div class="grid">
+      <div class="feature">
+        <div class="icon">⚡</div>
+        <h3>插件化架构</h3>
+        <p>每个数据源都是独立 Python 插件，参数表单从脚本元数据自动生成，几分钟即可接入新服务。</p>
+      </div>
+      <div class="feature">
+        <div class="icon">📊</div>
+        <h3>用量统计图表</h3>
+        <p>Token 统计支持折线图与堆叠直方图切换，用量趋势和模型分布一眼看清。</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🗂</div>
+        <h3>分组 / 标签页</h3>
+        <p>卡片支持分组堆叠与标签页两种布局，拖拽排序，按你的习惯组织面板。</p>
+      </div>
+      <div class="feature">
+        <div class="icon">⏱</div>
+        <h3>智能刷新调度</h3>
+        <p>每个插件独立设置刷新间隔；系统休眠自动暂停，唤醒后继续，不浪费任何一次请求。</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🌗</div>
+        <h3>深浅色主题</h3>
+        <p>浅色、深色或跟随系统即时切换，插件图标随主题自动适配，离线可用。</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🔄</div>
+        <h3>自动更新</h3>
+        <p>后台定时检查新版本，菜单栏胶囊提示，面板内一键下载安装。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="screenshots">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>截图预览</h2>
+      <p>真实的菜单栏弹层与设置界面</p>
+    </div>
+    <div class="shots">
+      <figure class="shot">
+        <div class="frame"><img src="assets/tabs-claude.jpg" alt="标签页模式 Claude" loading="lazy"></div>
+        <figcaption>标签页模式 · Claude</figcaption>
+      </figure>
+      <figure class="shot">
+        <div class="frame"><img src="assets/tabs-codex.jpg" alt="标签页模式 Codex" loading="lazy"></div>
+        <figcaption>标签页模式 · Codex</figcaption>
+      </figure>
+      <figure class="shot">
+        <div class="frame"><img src="assets/grouped-glm.jpg" alt="分组展开 Token 统计图" loading="lazy"></div>
+        <figcaption>分组展开 Token 统计图</figcaption>
+      </figure>
+      <figure class="shot wide">
+        <div class="frame"><img src="assets/settings.jpg" alt="插件设置" loading="lazy"></div>
+        <figcaption>插件设置</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="plugins" id="plugins">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>内置插件，开箱即用</h2>
+      <p>覆盖主流模型与服务，也可以通过插件协议接入任何数据源</p>
+    </div>
+    <div class="chips">
+      <span class="chip"><span class="dot" style="background:#d97757"></span>Claude</span>
+      <span class="chip"><span class="dot" style="background:#6e56cf"></span>Codex</span>
+      <span class="chip"><span class="dot" style="background:#3b82f6"></span>智谱 GLM</span>
+      <span class="chip"><span class="dot" style="background:#ef4444"></span>MiniMax</span>
+      <span class="chip"><span class="dot" style="background:#06b6d4"></span>DeepSeek</span>
+      <span class="chip"><span class="dot" style="background:#8b5cf6"></span>Kimi</span>
+      <span class="chip"><span class="dot" style="background:#f59e0b"></span>Tavily</span>
+      <span class="chip"><span class="dot" style="background:#10b981"></span>Command Code</span>
+    </div>
+    <p class="plugin-note">想接入自己的服务？查看 <a href="https://github.com/marsmay/UsageBoard#%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91" target="_blank" rel="noopener">插件开发文档</a>，一个 Python 脚本即可。</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>一分钟安装</h2>
+      <p>需要 macOS 13.0 或更高版本</p>
+    </div>
+    <div class="install-card">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <p><strong>通过 Homebrew 安装</strong></p>
+          <pre>brew tap marsmay/usageboard
+brew install --cask usageboard</pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <p><strong>首次打开</strong>时若提示"无法验证开发者"，在"系统设置 → 隐私与安全性"中点击"仍要打开"，或执行：</p>
+          <pre>xattr -cr /Applications/UsageBoard.app</pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <p><strong>在设置中添加并启用插件</strong>，填入对应服务的凭据，用量即刻出现在菜单栏。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>UsageBoard · MIT License</span>
+    <span><a href="https://github.com/marsmay/UsageBoard" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/marsmay/UsageBoard/releases" target="_blank" rel="noopener">Releases</a> · <a href="https://github.com/marsmay/UsageBoard/issues" target="_blank" rel="noopener">反馈问题</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

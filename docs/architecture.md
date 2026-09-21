@@ -26,11 +26,10 @@ UsageBoard 是 macOS 菜单栏应用，通过外部插件聚合服务配额、�
 | `Tests/PluginTests/` | 内置插件、公共缓存和错误分类、解释器兼容性测试 |
 | `Resources/BundledPlugins/` | 八个 Python 插件和 `_common.py` |
 | `Resources/icons/` | light/dark 插件 PNG，来源与哈希见目录内 README |
-| `Resources/IconSources/` | Codex PNG 与 Command Code 官方 SVG 源图 |
 | `Resources/PluginAuthoringGuide.html` | 随 app 打包的插件协议说明 |
 | `Resources/UsageBoard.icns` | 应用图标 |
 | `scripts/build.sh` / `scripts/release.sh` | 本地打包启动 / 服务器发布 |
-| `scripts/prepare_codex_icon.py` | 用 Pillow 从源图重新生成 Codex 图标 |
+| `website/` | 项目主页静态文件（HTML、截图与图标素材） |
 | `dist/` | 生成的 app、ZIP 和更新 metadata，不手工修改 |
 
 ## 2. 依赖边界

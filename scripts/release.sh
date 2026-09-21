@@ -8,7 +8,7 @@ APP_BUNDLE="$DIST_DIR/UsageBoard.app"
 PLIST="$APP_BUNDLE/Contents/Info.plist"
 REMOTE_HOST="root@may"
 REMOTE_PATH="/data/web/usageboard"
-DOWNLOAD_BASE_URL="https://may.ltd/usageboard"
+DOWNLOAD_BASE_URL="https://usageboard.may.ltd"
 UPDATE_CHECK_URL="${DOWNLOAD_BASE_URL}/version.json"
 
 if [ ! -f "$PLIST" ]; then

@@ -4,7 +4,7 @@
 
 light 文件来自现有插件 metadata 的 URL；dark 文件仅将 URL 中的 `/light/` 替换为 `/dark/` 下载。Lobe 图标除 Codex 外保留上游 PNG 原始内容。Codex 两套图标均由 light 原图去除外部白底、保留白色 `>_`、去除边缘白色杂边，主体裁去留白后由 480×480 px 放大至 640×640 px，输出尺寸与其他图标一致，背景为真实 alpha 透明。构建和运行时无需下载。
 
-Codex 原图保存在 `Resources/IconSources/codex-color.png`（SHA-256：`fcea9ddbaafdca236a8380cef2ecd3342ecd9914a7b080873873cf45f415686d`）。可在安装 Pillow 的 Python 环境中运行 `python3 scripts/prepare_codex_icon.py` 重新生成；无需图像生成服务。
+Codex 原图为上游 light PNG（SHA-256：`fcea9ddbaafdca236a8380cef2ecd3342ecd9914a7b080873873cf45f415686d`）。源图与生成脚本不再随仓库保留，如需重新生成请从上游链接重新下载后按上述规则处理。
 
 | 文件 | 来源 | SHA-256 |
 | --- | --- | --- |
@@ -25,11 +25,9 @@ Codex 原图保存在 `Resources/IconSources/codex-color.png`（SHA-256：`fcea9
 
 ## Command Code
 
-官方 SVG 下载于 2026-09-20，源文件保存在 `Resources/IconSources/`。上游 `cmdsymbol-light.svg` 为白色图形，用于深色界面；`cmdsymbol-dark.svg` 为黑色图形，用于浅色界面。保持原始比例、颜色和透明背景，栅格化为 640×640 PNG。可在提供 sharp 的 Node.js 环境运行 `node scripts/prepare_commandcode_icons.cjs` 重新生成；仅资源生成需要 sharp，应用与插件运行时不需要。
+官方 SVG 下载于 2026-09-20。上游 `cmdsymbol-light.svg` 为白色图形，用于深色界面；`cmdsymbol-dark.svg` 为黑色图形，用于浅色界面。保持原始比例、颜色和透明背景，栅格化为 640×640 PNG。SVG 源文件与生成脚本不再随仓库保留，如需重新生成请从官方链接重新下载。
 
 | 文件 | 来源 | SHA-256 |
 | --- | --- | --- |
 | `light/commandcode.png` | [官方 SVG](https://commandcode.ai/logos/cmdsymbol-dark.svg) | `f3cbe04dc537f9fb54f2d948efad9c360d9b9fba2f111cc45f94fa774a6bc3ad` |
-| `../IconSources/cmdsymbol-dark.svg` | [原始文件](https://commandcode.ai/logos/cmdsymbol-dark.svg) | `fcc9138a2c9bb116d42edcd0deb3e0eee20ea735d08c0c3d8843b8e49ea404fd` |
 | `dark/commandcode.png` | [官方 SVG](https://commandcode.ai/logos/cmdsymbol-light.svg) | `58b75f0666865806c07bcdbe631c39752c915ad6294f42a3a043399883560690` |
-| `../IconSources/cmdsymbol-light.svg` | [原始文件](https://commandcode.ai/logos/cmdsymbol-light.svg) | `704b6c15cfea15f7889029b6de786271b20dcf63e744ea68e50783f6ecf10004` |
