@@ -103,16 +103,17 @@ struct SettingsView: View {
         Button {
             selectedTab = tab
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: tab.icon)
-                    .font(.system(size: 13))
-                    .frame(width: 16)
+                    .font(.system(size: 15))
+                    .frame(width: 18)
                 Text(strings.tabTitle(tab))
-                    .font(.system(size: 13))
-                Spacer()
+                    .font(.system(size: 14))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(selectedTab == tab ? Color.accentColor : Color.clear)
