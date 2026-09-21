@@ -44,10 +44,10 @@ struct PluginSettingsView: View {
                         .foregroundStyle(.tertiary)
                     TextField(strings.text(.searchPlugins), text: $searchText)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 13))
                 }
                 .padding(.horizontal, 8)
-                .frame(height: 28)
+                .frame(height: 32)
                 .background(Color.primary.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, 10)
@@ -141,7 +141,7 @@ struct PluginSettingsView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
-            .frame(width: 190)
+            .frame(width: 210)
             .frame(maxHeight: .infinity)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
 
@@ -283,7 +283,7 @@ struct PluginSettingsView: View {
             Toggle("", isOn: pluginEnabledBinding(plugin))
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.mini)
+                .controlSize(.small)
                 .accessibilityLabel("\(strings.text(.enabled)) \(store.displayNames[plugin.id] ?? PluginDisplayNames.displayName(for: plugin, language: store.activeLanguage))")
         }
         .padding(.horizontal, 2)

@@ -33,7 +33,7 @@ struct PluginSettingsCard: View {
                 Toggle(strings.text(.enabled), isOn: enabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
-                    .controlSize(.mini)
+                    .controlSize(.small)
                     .accessibilityLabel(strings.text(.enabled))
             }
 
@@ -105,7 +105,7 @@ struct PluginSettingsCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .controlSize(.small)
+        .controlSize(.regular)
     }
 
     private func chooseExecutable() {
@@ -150,20 +150,26 @@ struct PluginParameterField: View {
         case .boolean:
             Toggle("", isOn: boolBinding)
                 .toggleStyle(.switch)
-                .controlSize(.mini)
+                .controlSize(.small)
                 .labelsHidden()
         case .choice:
             // ViewThatFits picks between segmented and menu in a single layout
             // pass, so the control renders at its final size on the first frame.
             ViewThatFits(in: .horizontal) {
-                choicePicker
-                    .pickerStyle(.segmented)
+                SettingsSegments(
+                    options: parameter.options.map(\.value),
+                    title: { value in
+                        parameter.options.first { $0.value == value }?.localizedLabel(language: language) ?? value
+                    },
+                    selection: valueBinding,
+                    label: parameter.localizedLabel(language: language)
+                )
                     .fixedSize()
                 choicePicker
                     .pickerStyle(.menu)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .frame(height: 22)
+            .frame(minHeight: 26)
         case .string:
             TextField(parameter.localizedPlaceholder(language: language) ?? "", text: valueBinding)
                 .textFieldStyle(.roundedBorder)

@@ -230,7 +230,7 @@ Supported parameter types:
 - `directory`
 - `file`
 
-`choice` parameters use segmented controls when space permits and a menu otherwise; `directory` parameters render as a path field with a folder picker; `file` parameters render as a path field with a file picker.
+`choice` parameters use equal-width segmented controls with an accent-colored selection when space permits and a menu otherwise; `directory` parameters render as a path field with a folder picker; `file` parameters render as a path field with a file picker.
 
 Bundled plugins reuse the shared `_common.py` helpers (standalone user plugins need `_common.py` alongside the script, or the standalone implementation in the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html)):
 

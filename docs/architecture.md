@@ -160,7 +160,7 @@ App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSSt
 
 启动使用纯 AppKit 生命周期，不声明 SwiftUI Settings scene。AppDelegate 在启动时安装 AppMenu 创建的中英文应用与编辑菜单；编辑命令通过 nil target 沿 responder chain 送到当前输入框，保留撤销、重做、剪切、拷贝、粘贴和全选快捷键。
 
-- 设置窗口初始 800×520，最小 800×480。
+- 设置窗口初始 800×520，最小 800×480；左侧导航栏宽 120，插件列表宽 210。输入框和分段控件使用 regular 尺寸，开关使用 small，插件搜索框高 32 pt。
 - popover 固定宽 380，高度随内容缩放，上限为状态栏所在屏幕可用高度的 75%。OverviewView 使用纵向 fixedSize 支持收缩，MeasuredScrollView 按扣除标题等区域后的预算滚动。
 - DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。重置卡默认收起为数量与最近到期摘要，整行点击展开按到期时间排序的两列卡片明细（每排两张，奇数张时最后一张左对齐）；常态使用次级文字色，临近到期才着色。
 - UsageProgressBar 显式 color 优先；未指定或无法识别时，按进度 <60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红。status 不决定颜色。文字按已填充区域遮罩切色，黄/橙/绿底用黑字，蓝/红底用白字。
@@ -173,7 +173,7 @@ App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSSt
 - 图表绘图区高 170 pt，支持横向滚动；纵轴刻度由共享 TokenChartAxisScale 计算，选择易读步长。
 - hover 提示在滚动视口外层渲染，结合内容偏移换算桶，防止滚动后错位和长提示裁剪；未选择单项时过滤零值分项，空桶仍保留总量；选择单项时保留该项，即使当前桶为零。
 
-设置页使用通用/插件/关于三栏。插件草稿由 SettingsView 持有，切换栏目保留；切换或新增插件前处理未保存编辑。保存通过 Store.updatePlugin 校验路径、重载路径变化后的 metadata/defaultValue，并校验已启用插件必填参数。启用/禁用与拖拽排序即时生效。插件列表使用 macOS 原生 List 选择与 onMove 排序，避免行内选择 Button 拦截拖拽；由 Store 一次更新配置、快照和持久化；搜索时仅重排可见插件所在位置，隐藏插件位置不变。choice 按可用宽度只实例化分段或菜单之一，长选项回退菜单。
+设置页使用通用/插件/关于三栏。通用页的主题、显示模式、图表模式、语言与插件 choice 参数共用 SettingsSegments；显式设置 selectedSegmentBezelColor 为系统强调色，避免不同 SDK 兼容外观下选中态退回白色。插件草稿由 SettingsView 持有，切换栏目保留；切换或新增插件前处理未保存编辑。保存通过 Store.updatePlugin 校验路径、重载路径变化后的 metadata/defaultValue，并校验已启用插件必填参数。启用/禁用与拖拽排序即时生效。插件列表使用 macOS 原生 List 选择与 onMove 排序，避免行内选择 Button 拦截拖拽；由 Store 一次更新配置、快照和持久化；搜索时仅重排可见插件所在位置，隐藏插件位置不变。choice 使用原生 NSSegmentedControl 的等宽分段与系统强调色选中态，通过 AppKit intrinsicContentSize 在首帧测量；ViewThatFits 按可用宽度选择分段或菜单，长选项回退菜单。
 
 AppTheme 枚举定义在 Core 的 AppConfiguration.swift；App 层扩展映射 NSAppearance。主题立即持久化，并更新 NSApp、已有 popover 和 hosting view；system 清除外观覆盖以继承系统设置。
 

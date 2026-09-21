@@ -15,31 +15,25 @@ struct GeneralSettingsView: View {
         VStack(spacing: 20) {
             SettingsSection(title: strings.text(.appearanceSection)) {
                 SettingsRow(label: strings.text(.theme)) {
-                    Picker(strings.text(.theme), selection: Binding(
-                        get: { store.configuration.theme },
-                        set: { store.setTheme($0) }
-                    )) {
-                        ForEach(AppTheme.allCases) { theme in
-                            Text(strings.themeName(theme)).tag(theme)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .labelsHidden()
-                    .accessibilityLabel(strings.text(.theme))
+                    SettingsSegments(
+                        options: AppTheme.allCases,
+                        title: strings.themeName,
+                        selection: Binding(
+                            get: { store.configuration.theme },
+                            set: { store.setTheme($0) }
+                        ),
+                        label: strings.text(.theme)
+                    )
                     .fixedSize()
                 }
                 Divider().padding(.horizontal, 14)
                 SettingsRow(label: strings.text(.displayMode), hint: strings.text(.displayModeHint)) {
-                    Picker(strings.text(.displayMode), selection: $store.configuration.overviewDisplayMode) {
-                        ForEach(DisplayMode.allCases) { mode in
-                            Text(strings.displayModeName(mode)).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .labelsHidden()
-                    .accessibilityLabel(strings.text(.displayMode))
+                    SettingsSegments(
+                        options: DisplayMode.allCases,
+                        title: strings.displayModeName,
+                        selection: $store.configuration.overviewDisplayMode,
+                        label: strings.text(.displayMode)
+                    )
                     .fixedSize()
                     .onChange(of: store.configuration.overviewDisplayMode) { _ in
                         store.persistConfiguration()
@@ -47,15 +41,12 @@ struct GeneralSettingsView: View {
                 }
                 Divider().padding(.horizontal, 14)
                 SettingsRow(label: strings.text(.chartMode), hint: strings.text(.chartModeHint)) {
-                    Picker(strings.text(.chartMode), selection: $store.configuration.chartMode) {
-                        ForEach(ChartMode.allCases) { mode in
-                            Text(strings.chartModeName(mode)).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .labelsHidden()
-                    .accessibilityLabel(strings.text(.chartMode))
+                    SettingsSegments(
+                        options: ChartMode.allCases,
+                        title: strings.chartModeName,
+                        selection: $store.configuration.chartMode,
+                        label: strings.text(.chartMode)
+                    )
                     .fixedSize()
                     .onChange(of: store.configuration.chartMode) { _ in
                         store.persistConfiguration()
@@ -70,7 +61,7 @@ struct GeneralSettingsView: View {
                         set: { store.setShowUpdateBadge($0) }
                     ))
                     .toggleStyle(.switch)
-                    .controlSize(.mini)
+                    .controlSize(.small)
                     .labelsHidden()
                     .accessibilityLabel(strings.text(.updateBadge))
                 }
@@ -81,21 +72,18 @@ struct GeneralSettingsView: View {
                         set: { store.requestLaunchAtLogin($0) }
                     ))
                     .toggleStyle(.switch)
-                    .controlSize(.mini)
+                    .controlSize(.small)
                     .labelsHidden()
                     .accessibilityLabel(strings.text(.launchAtLogin))
                 }
                 Divider().padding(.horizontal, 14)
                 SettingsRow(label: strings.text(.language), hint: strings.text(.languageRestartHint)) {
-                    Picker(strings.text(.language), selection: $store.configuration.language) {
-                        ForEach(AppLanguage.allCases) { language in
-                            Text(language.displayName).tag(language)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .labelsHidden()
-                    .accessibilityLabel(strings.text(.language))
+                    SettingsSegments(
+                        options: AppLanguage.allCases,
+                        title: { $0.displayName },
+                        selection: $store.configuration.language,
+                        label: strings.text(.language)
+                    )
                     .fixedSize()
                     .onChange(of: store.configuration.language) { newValue in
                         store.persistConfiguration()

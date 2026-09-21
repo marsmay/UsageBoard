@@ -95,7 +95,7 @@ struct SettingsView: View {
 
             Spacer()
         }
-        .frame(width: 188)
+        .frame(width: 120)
         .background(.regularMaterial)
     }
 
