@@ -59,7 +59,7 @@ public struct UpdateDownloader: Sendable {
         self.makeConfiguration = makeConfiguration
     }
 
-    public func download(from url: URL, expectedVersion: String? = nil) async throws -> DownloadedUpdate {
+    public func download(from url: URL, expectedVersion: String? = nil, expectedBuild: Int? = nil) async throws -> DownloadedUpdate {
         try UpdateChecker.validateURL(url)
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("usageboard-download-\(UUID().uuidString).zip")
@@ -91,7 +91,7 @@ public struct UpdateDownloader: Sendable {
         guard appURLs.count == 1, let appURL = appURLs.first else {
             throw UpdateError.extractionFailed
         }
-        try Self.validateApp(at: appURL, expectedVersion: expectedVersion)
+        try Self.validateApp(at: appURL, expectedVersion: expectedVersion, expectedBuild: expectedBuild)
         shouldCleanExtractDir = false
         return DownloadedUpdate(appURL: appURL, cleanupDirectoryURL: extractDir)
     }
@@ -112,7 +112,7 @@ public struct UpdateDownloader: Sendable {
         }
     }
 
-    static func validateApp(at url: URL, expectedVersion: String?) throws {
+    static func validateApp(at url: URL, expectedVersion: String?, expectedBuild: Int? = nil) throws {
         guard url.lastPathComponent == "UsageBoard.app",
               (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
               let bundle = Bundle(url: url),
@@ -120,6 +120,10 @@ public struct UpdateDownloader: Sendable {
               bundle.object(forInfoDictionaryKey: "CFBundlePackageType") as? String == "APPL",
               let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
               expectedVersion == nil || version == expectedVersion,
+              // 同版本高 build 更新场景：声明了 latestBuild 时包内 build 必须一致，
+              // 否则服务器/缓存返回的同版本旧包会被反复安装。
+              expectedBuild == nil
+                || (bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String).flatMap(Int.init) == expectedBuild,
               let executable = bundle.executableURL,
               executable.resolvingSymlinksInPath().path.hasPrefix(url.resolvingSymlinksInPath().path + "/"),
               (try? executable.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,

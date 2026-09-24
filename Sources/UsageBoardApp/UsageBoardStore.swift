@@ -580,7 +580,7 @@ final class UsageBoardStore: ObservableObject {
         Task {
             do {
                 let downloader = UpdateDownloader()
-                let update = try await downloader.download(from: url, expectedVersion: info.latestVersion)
+                let update = try await downloader.download(from: url, expectedVersion: info.latestVersion, expectedBuild: info.latestBuild)
                 defer { try? FileManager.default.removeItem(at: update.cleanupDirectoryURL) }
                 updatePhase = .installing
                 updateMessage = storeMessage(.installingUpdate)

@@ -106,6 +106,38 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertThrowsError(try UpdateDownloader.validateApp(at: app, expectedVersion: "1.2.3"))
     }
 
+    /// 同版本高 build 更新：声明了 latestBuild 时包内 CFBundleVersion 必须一致，
+    /// 否则服务器/缓存返回的同版本旧包会被接受并反复安装。
+    func testUpdateValidatesBundleBuildWhenExpected() throws {
+        // Foundation 按路径缓存 Bundle 的 infoDictionary，每个用例使用全新目录。
+        func makeApp(build: String?) throws -> URL {
+            let app = try temporaryDirectory().appendingPathComponent("UsageBoard.app")
+            let contents = app.appendingPathComponent("Contents")
+            let macOS = contents.appendingPathComponent("MacOS")
+            try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+            let binary = macOS.appendingPathComponent("UsageBoard")
+            try "#!/bin/sh\nexit 0".write(to: binary, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+            var plist = ["CFBundleIdentifier": "ltd.may.UsageBoard", "CFBundleExecutable": "UsageBoard",
+                         "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "1.2.3"]
+            plist["CFBundleVersion"] = build
+            try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"))
+            return app
+        }
+        let app = try makeApp(build: "100")
+        // 未声明 build：保持旧行为，只校验版本号
+        XCTAssertNoThrow(try UpdateDownloader.validateApp(at: app, expectedVersion: "1.2.3"))
+        // 声明 build 一致：通过
+        XCTAssertNoThrow(try UpdateDownloader.validateApp(at: app, expectedVersion: "1.2.3", expectedBuild: 100))
+        // 声明 build 更高（服务器/缓存返回同版本旧包）：拒绝
+        XCTAssertThrowsError(try UpdateDownloader.validateApp(at: app, expectedVersion: "1.2.3", expectedBuild: 200))
+        // 包内缺少 CFBundleVersion 但声明了 build：拒绝
+        let noBuild = try makeApp(build: nil)
+        XCTAssertThrowsError(try UpdateDownloader.validateApp(at: noBuild, expectedVersion: "1.2.3", expectedBuild: 100))
+        XCTAssertNoThrow(try UpdateDownloader.validateApp(at: noBuild, expectedVersion: "1.2.3"))
+    }
+
     func testReplacementRestoresOriginalWhenStagedMoveFails() throws {
         try runReplacement(stagedExists: false, openSucceeds: true)
     }
