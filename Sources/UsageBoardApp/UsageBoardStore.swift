@@ -229,6 +229,7 @@ final class UsageBoardStore: ObservableObject {
     }
 
     func addPlugin(fileURL: URL) {
+        let executablePath = canonicalExecutablePath(for: fileURL)
         let metadata = PluginMetadataParser.parse(fileURL: fileURL)
         let name = metadata?.name ?? fileURL.deletingPathExtension().lastPathComponent
         var values: [String: String] = [:]
@@ -241,7 +242,7 @@ final class UsageBoardStore: ObservableObject {
         let plugin = PluginConfiguration(
             name: name,
             enabled: false,
-            executablePath: fileURL.path,
+            executablePath: executablePath,
             refreshIntervalSeconds: 300,
             metadata: metadata,
             parameterValues: values
@@ -251,11 +252,24 @@ final class UsageBoardStore: ObservableObject {
         saveConfiguration()
     }
 
+    /// 文件选择器会解析软链接返回真实路径。若所选文件正是 plugins 目录内
+    /// 同名链接的目标，存储链接路径本身：app 包迁移或重建后安装器会重新
+    /// 指向新包，配置中的执行路径保持有效。
+    private func canonicalExecutablePath(for fileURL: URL) -> String {
+        let linkURL = pluginsDirectoryURL.appendingPathComponent(fileURL.lastPathComponent)
+        guard FileManager.default.fileExists(atPath: linkURL.path),
+              linkURL.resolvingSymlinksInPath() == fileURL.resolvingSymlinksInPath() else {
+            return fileURL.path
+        }
+        return linkURL.path
+    }
+
     @discardableResult
     func updatePlugin(_ draft: PluginConfiguration) -> Bool {
         guard let index = configuration.plugins.firstIndex(where: { $0.id == draft.id }) else { return false }
         let original = configuration.plugins[index]
         var updated = draft
+        updated.executablePath = canonicalExecutablePath(for: URL(fileURLWithPath: draft.executablePath))
         updated.enabled = original.enabled
         updated.stateID = original.stateID
         updated.refreshIntervalSeconds = max(draft.refreshIntervalSeconds, 5)
