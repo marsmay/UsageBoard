@@ -87,7 +87,7 @@ from _common import (  # noqa: E402
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 PARSE_ERROR = "parse_error"
 REQUEST_TIMEOUT = "request_timeout"

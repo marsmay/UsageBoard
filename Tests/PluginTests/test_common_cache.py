@@ -44,6 +44,12 @@ class TestNormalizeModelName(unittest.TestCase):
         self.assertEqual(normalize_model_name("claude-opus-4-7"), "claude-opus-4-7")
         self.assertEqual(normalize_model_name("  gpt-5  "), "gpt-5")
 
+    def test_trailing_effort_suffix_is_stripped(self):
+        self.assertEqual(normalize_model_name("gpt-5(high)"), "gpt-5")
+        self.assertEqual(normalize_model_name("gpt-5 (high)"), "gpt-5")
+        self.assertEqual(normalize_model_name("claude-opus-4-7（medium）"), "claude-opus-4-7")
+        self.assertEqual(normalize_model_name("openai/gpt-5(max)"), "gpt-5")
+
     def test_unusable_values_return_none(self):
-        for value in [None, "", "   ", "deepseek/", 123, {"model": "gpt-5"}]:
+        for value in [None, "", "   ", "deepseek/", "(high)", 123, {"model": "gpt-5"}]:
             self.assertIsNone(normalize_model_name(value))

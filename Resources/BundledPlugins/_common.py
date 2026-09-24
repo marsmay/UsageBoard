@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import tempfile
 import ssl
 import socket
@@ -74,11 +75,16 @@ def utc_now_iso() -> str:
 
 # ─── Model names ────────────────────────────────────────────────────────────────
 
+# 代理（如 CPA）用末尾括号标注思考强度：`gpt-5(high)`、`gpt-5 (high)`、`gpt-5（high）`
+_MODEL_SUFFIX_RE = re.compile(r"\s*[(（][^)）]*[)）]\s*$")
+
+
 def normalize_model_name(name: Any) -> str | None:
-    """Return the last `/`-separated segment of a model name (`deepseek/v4` -> `v4`)."""
+    """Return the last `/`-separated segment of a model name, without a trailing `(effort)` suffix."""
     if not isinstance(name, str):
         return None
-    return name.strip().split("/")[-1].strip() or None
+    segment = name.strip().split("/")[-1].strip()
+    return _MODEL_SUFFIX_RE.sub("", segment).strip() or None
 
 
 # ─── Output ─────────────────────────────────────────────────────────────────────

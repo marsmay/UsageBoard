@@ -87,7 +87,7 @@ CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credit
 CREDITS_TIMEOUT_SECONDS = 2.0
 # Leave time to serialize stdout before PluginExecutor's 15-second deadline.
 CREDITS_DEADLINE_SECONDS = 12.0
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 
 TRANSLATIONS = {
