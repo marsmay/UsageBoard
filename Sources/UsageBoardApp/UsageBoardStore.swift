@@ -534,7 +534,7 @@ final class UsageBoardStore: ObservableObject {
         Task {
             defer { isCheckingForUpdates = false }
             do {
-                let result = try await updateChecker.check(currentVersion: currentVersion, url: url)
+                let result = try await updateChecker.check(currentVersion: currentVersion, currentBuild: currentBuild, url: url)
                 if result.hasUpdate {
                     availableUpdate = result.info
                     // Only this manual request may open a prompt. Never retain
@@ -586,6 +586,10 @@ final class UsageBoardStore: ObservableObject {
 
     private var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+    }
+
+    private var currentBuild: Int? {
+        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String).flatMap(Int.init)
     }
 
     private func installBundledPlugins() throws {

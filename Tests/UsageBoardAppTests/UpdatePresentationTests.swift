@@ -256,7 +256,7 @@ final class UpdatePresentationTests: XCTestCase {
 }
 
 private struct NoAvailableUpdateChecker: UpdateChecking {
-    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+    func check(currentVersion: String, currentBuild: Int?, url: URL) async throws -> UpdateCheckResult {
         UpdateCheckResult(
             info: UpdateInfo(latestVersion: currentVersion, downloadURL: "https://example.com/u.zip"),
             hasUpdate: false

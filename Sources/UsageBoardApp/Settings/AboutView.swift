@@ -10,7 +10,10 @@ struct AboutView: View {
     }
 
     private var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? strings.text(.unknownVersion)
+        let infoDictionary = Bundle.main.infoDictionary
+        let version = infoDictionary?["CFBundleShortVersionString"] as? String ?? strings.text(.unknownVersion)
+        guard let build = infoDictionary?["CFBundleVersion"] as? String, !build.isEmpty else { return version }
+        return "\(version) (\(build))"
     }
 
     var body: some View {

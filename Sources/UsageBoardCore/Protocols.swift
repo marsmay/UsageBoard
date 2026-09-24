@@ -32,7 +32,7 @@ extension PluginExecutor: PluginExecuting {}
 // MARK: - UpdateChecking
 
 public protocol UpdateChecking: Sendable {
-    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult
+    func check(currentVersion: String, currentBuild: Int?, url: URL) async throws -> UpdateCheckResult
 }
 
 extension UpdateChecker: UpdateChecking {}

@@ -556,6 +556,23 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isVersion("1.1.9", newerThan: "1.2.0"))
     }
 
+    func testSameVersionWithHigherBuildCountsAsUpdate() {
+        func info(_ version: String, build: Int? = nil) -> UpdateInfo {
+            UpdateInfo(latestVersion: version, downloadURL: "https://example.com/u.zip", latestBuild: build)
+        }
+        // 版本更高：无论 build 如何都提示
+        XCTAssertTrue(UpdateChecker.isUpdate(info("1.2.1"), newerThanCurrentVersion: "1.2.0", build: 100))
+        // 同版本 build 更高：提示
+        XCTAssertTrue(UpdateChecker.isUpdate(info("1.2.0", build: 200), newerThanCurrentVersion: "1.2.0", build: 100))
+        // 同版本 build 相同或更低、服务器缺 build、本地缺 build：不提示
+        XCTAssertFalse(UpdateChecker.isUpdate(info("1.2.0", build: 100), newerThanCurrentVersion: "1.2.0", build: 100))
+        XCTAssertFalse(UpdateChecker.isUpdate(info("1.2.0", build: 99), newerThanCurrentVersion: "1.2.0", build: 100))
+        XCTAssertFalse(UpdateChecker.isUpdate(info("1.2.0"), newerThanCurrentVersion: "1.2.0", build: 100))
+        XCTAssertFalse(UpdateChecker.isUpdate(info("1.2.0", build: 200), newerThanCurrentVersion: "1.2.0", build: nil))
+        // 版本更低：即使 build 更高也不提示
+        XCTAssertFalse(UpdateChecker.isUpdate(info("1.1.9", build: 999), newerThanCurrentVersion: "1.2.0", build: 100))
+    }
+
     func testPluginExecutorReportsInvalidJSON() {
         let configuration = PluginConfiguration(
             name: "Bad",

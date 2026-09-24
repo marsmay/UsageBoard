@@ -429,7 +429,7 @@ private actor SequencedUpdateChecker: UpdateChecking {
         self.results = results
     }
 
-    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+    func check(currentVersion: String, currentBuild: Int?, url: URL) async throws -> UpdateCheckResult {
         try results.removeFirst().get()
     }
 }
@@ -438,7 +438,7 @@ private struct StubUpdateChecker: UpdateChecking {
     let info: UpdateInfo?
     let hasUpdate: Bool
 
-    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+    func check(currentVersion: String, currentBuild: Int?, url: URL) async throws -> UpdateCheckResult {
         guard let info else { throw URLError(.cannotConnectToHost) }
         return UpdateCheckResult(info: info, hasUpdate: hasUpdate)
     }
@@ -559,7 +559,7 @@ private struct FailingExecutor: PluginExecuting {
 }
 
 private struct NoopUpdateChecker: UpdateChecking {
-    func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+    func check(currentVersion: String, currentBuild: Int?, url: URL) async throws -> UpdateCheckResult {
         throw URLError(.badURL)
     }
 }

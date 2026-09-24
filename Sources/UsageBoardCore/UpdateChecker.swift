@@ -243,7 +243,7 @@ public struct UpdateChecker: Sendable {
         return URLSession(configuration: config)
     }()
 
-    public func check(currentVersion: String, url: URL) async throws -> UpdateCheckResult {
+    public func check(currentVersion: String, currentBuild: Int?, url: URL) async throws -> UpdateCheckResult {
         try Self.validateURL(url)
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let existing = components?.queryItems ?? []
@@ -256,7 +256,15 @@ public struct UpdateChecker: Sendable {
         let info = try UsageBoardJSON.decoder().decode(UpdateInfo.self, from: data)
         guard let downloadURL = URL(string: info.downloadURL) else { throw URLError(.badURL) }
         try Self.validateURL(downloadURL)
-        return UpdateCheckResult(info: info, hasUpdate: Self.isVersion(info.latestVersion, newerThan: currentVersion))
+        return UpdateCheckResult(info: info, hasUpdate: Self.isUpdate(info, newerThanCurrentVersion: currentVersion, build: currentBuild))
+    }
+
+    /// 版本号更高，或版本号相同且服务器 build 更高时判定为有更新。
+    public static func isUpdate(_ info: UpdateInfo, newerThanCurrentVersion currentVersion: String, build currentBuild: Int?) -> Bool {
+        if isVersion(info.latestVersion, newerThan: currentVersion) { return true }
+        guard !isVersion(currentVersion, newerThan: info.latestVersion),
+              let latestBuild = info.latestBuild, let currentBuild else { return false }
+        return latestBuild > currentBuild
     }
 
     static func validateURL(_ url: URL) throws {
