@@ -61,7 +61,7 @@ final class PluginOrderingTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-order-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let (store, _) = try makeStore(root: root)
-        let host = NSHostingView(rootView: PluginSettingsView(store: store, draft: .constant(nil)))
+        let host = NSHostingView(rootView: PluginSettingsView(store: store, draft: .constant(nil), unsavedChanges: UnsavedChangesBroker()))
         let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 612, height: 460),
                               styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = host

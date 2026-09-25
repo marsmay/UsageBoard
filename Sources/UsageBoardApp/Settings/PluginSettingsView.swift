@@ -8,6 +8,7 @@ struct PluginSettingsView: View {
     @ObservedObject var store: UsageBoardStore
     @State private var selectedPluginID: UUID?
     @Binding var draft: PluginConfiguration?
+    var unsavedChanges: UnsavedChangesBroker
     @State private var searchText = ""
     private var strings: AppLocalization {
         .shared
@@ -99,11 +100,7 @@ struct PluginSettingsView: View {
                     .accessibilityLabel(strings.text(.addPlugin))
 
                     Button {
-                        if let id = selectedPluginID {
-                            store.removePlugin(id: id)
-                            selectedPluginID = nil
-                            draft = nil
-                        }
+                        removeSelectedPlugin()
                     } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 12))
@@ -204,6 +201,10 @@ struct PluginSettingsView: View {
             } else if let id = store.configuration.plugins.first?.id {
                 loadDraft(for: id)
             }
+            unsavedChanges.handler = { resolveUnsavedChanges() }
+        }
+        .onDisappear {
+            unsavedChanges.handler = nil
         }
     }
 
@@ -304,6 +305,22 @@ struct PluginSettingsView: View {
                 }
             }
         )
+    }
+
+    /// 删除插件不可逆（含已保存的参数配置）：先处理未保存草稿，再单独确认删除。
+    private func removeSelectedPlugin() {
+        guard let id = selectedPluginID else { return }
+        guard resolveUnsavedChanges() else { return }
+        let alert = NSAlert()
+        alert.messageText = strings.text(.confirmRemovePlugin)
+        alert.informativeText = strings.text(.removePluginMessage)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: strings.text(.remove))
+        alert.addButton(withTitle: strings.text(.cancel))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.removePlugin(id: id)
+        selectedPluginID = nil
+        draft = nil
     }
 
     private func choosePlugin() {

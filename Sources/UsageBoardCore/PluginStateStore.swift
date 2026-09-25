@@ -15,6 +15,12 @@ private final class StateCache: @unchecked Sendable {
         defer { lock.unlock() }
         store[key] = value
     }
+
+    func remove(_ key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        store.removeValue(forKey: key)
+    }
 }
 
 public struct PluginStateStore: Sendable {
@@ -41,6 +47,13 @@ public struct PluginStateStore: Sendable {
         let data = try UsageBoardJSON.encoder().encode(state)
         try data.write(to: fileURL, options: [.atomic])
         cache.set(stateID, state)
+    }
+
+    /// Removes the cached state (memory + disk). stateID 轮换或删除插件后调用，
+    /// 防止 states/ 目录累积孤儿文件；清理失败静默——残留文件无害，不阻断配置变更。
+    public func remove(stateID: String) {
+        cache.remove(stateID)
+        try? FileManager.default.removeItem(at: fileURL(for: stateID))
     }
 
     public func needsRefresh(stateID: String, intervalSeconds: Int) -> Bool {

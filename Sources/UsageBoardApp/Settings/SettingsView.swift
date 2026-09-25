@@ -22,8 +22,16 @@ enum SettingsTab: CaseIterable, Identifiable {
 
 // MARK: - Main Settings View
 
+/// 让 AppDelegate 的 windowShouldClose 能询问 SwiftUI 内部的未保存草稿状态。
+/// handler 由 PluginSettingsView 在 onAppear/onDisappear 间注册；返回 false 表示取消关闭。
+@MainActor
+final class UnsavedChangesBroker {
+    var handler: (@MainActor () -> Bool)?
+}
+
 struct SettingsView: View {
     @ObservedObject var store: UsageBoardStore
+    var unsavedChanges: UnsavedChangesBroker
     @State private var selectedTab: SettingsTab = .general
     @State private var pluginDraft: PluginConfiguration?
 
@@ -46,13 +54,26 @@ struct SettingsView: View {
                 Divider()
 
                 if let error = store.lastError {
-                    Text(error)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Color.red.opacity(0.08))
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(error)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 0)
+                        Button {
+                            store.lastError = nil
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help(strings.text(.cancel))
+                        .accessibilityLabel(strings.text(.cancel))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.red.opacity(0.08))
                 }
 
                 // Content area
@@ -63,7 +84,7 @@ struct SettingsView: View {
                             .padding(20)
                     }
                 case .plugins:
-                    PluginSettingsView(store: store, draft: $pluginDraft)
+                    PluginSettingsView(store: store, draft: $pluginDraft, unsavedChanges: unsavedChanges)
                 case .about:
                     AboutView(store: store)
                 }

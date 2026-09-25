@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
     private var settingsWindowController: NSWindowController?
+    private var settingsUnsavedChanges = UnsavedChangesBroker()
     private var themeSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -148,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         settingsWindowController?.close()
         settingsWindowController = nil
 
-        let settingsView = SettingsView(store: store)
+        let settingsView = SettingsView(store: store, unsavedChanges: settingsUnsavedChanges)
             .frame(minWidth: 800, minHeight: 480)
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
@@ -177,7 +178,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     // MARK: - NSWindowDelegate
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // 有未保存的插件草稿时先询问；handler 由 PluginSettingsView 注册，不在插件页时为 nil。
+        guard settingsUnsavedChanges.handler?() ?? true else { return false }
+        return true
+    }
+
     @objc func windowWillClose(_ notification: Notification) {
+        settingsUnsavedChanges.handler = nil
         settingsWindowController = nil
     }
 }

@@ -88,6 +88,30 @@ final class UsageBoardTests: XCTestCase {
         XCTAssertEqual(loaded?.items.first?.name, "B")
     }
 
+    func testPluginStateStoreRemoveDeletesDiskFileAndMemoryEntry() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usageboard-\(UUID().uuidString)", isDirectory: true)
+        let store = PluginStateStore(directoryURL: directory)
+        let state = PluginCachedState(
+            updatedAt: Date(),
+            items: [UsageItem(id: "r", name: "R", used: 1, limit: 4, displayStyle: .percent)]
+        )
+
+        try store.save(stateID: "orphan", state: state)
+        XCTAssertNotNil(store.load(stateID: "orphan"))
+
+        store.remove(stateID: "orphan")
+
+        XCTAssertNil(store.load(stateID: "orphan"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: directory.appendingPathComponent("orphan.json").path),
+            "remove must delete the on-disk cache file"
+        )
+        // 重复 remove 与未知 ID 不抛异常。
+        store.remove(stateID: "orphan")
+        store.remove(stateID: "never-existed")
+    }
+
     func testPluginStateStoreKeepsMalformedStateIDInsideStatesDirectory() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("usageboard-\(UUID().uuidString)", isDirectory: true)

@@ -111,6 +111,9 @@ struct AppLocalization {
         case .reloadMetadata: return "Reload metadata"
         case .chooseScript: return "Choose script"
         case .removePlugin: return "Remove plugin"
+        case .confirmRemovePlugin: return "Remove this plugin?"
+        case .removePluginMessage: return "This removes the plugin and its saved parameters. This cannot be undone."
+        case .remove: return "Remove"
         case .addPlugin: return "Add plugin"
         case .launchAtLogin: return "Launch at Login"
         case .launchAtLoginHint: return "Launch UsageBoard at login"
@@ -192,6 +195,9 @@ struct AppLocalization {
         case .reloadMetadata: return "重新加载元数据"
         case .chooseScript: return "选择脚本"
         case .removePlugin: return "移除插件"
+        case .confirmRemovePlugin: return "移除该插件？"
+        case .removePluginMessage: return "将移除该插件及其已保存的参数配置，此操作不可撤销。"
+        case .remove: return "移除"
         case .addPlugin: return "添加插件"
         case .launchAtLogin: return "开机启动"
         case .launchAtLoginHint: return "登录时自动启动 UsageBoard"
@@ -272,6 +278,9 @@ struct AppLocalization {
         case reloadMetadata
         case chooseScript
         case removePlugin
+        case confirmRemovePlugin
+        case removePluginMessage
+        case remove
         case addPlugin
         case launchAtLogin
         case launchAtLoginHint

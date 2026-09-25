@@ -474,6 +474,93 @@ private struct BlockingSaveConfigStore: ConfigStoring {
     func pluginsDirectoryURL() -> URL { root.appendingPathComponent("plugins") }
 }
 
+
+
+@MainActor
+final class StateCacheCleanupTests: XCTestCase {
+    private func makeRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("usageboard-statecleanup-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func makeStore(root: URL, states: URL) -> (UsageBoardStore, PluginStateStore) {
+        let stateStore = PluginStateStore(directoryURL: states)
+        let store = UsageBoardStore(
+            configStore: TestConfigStore(configuration: AppConfiguration(), pluginsURL: root.appendingPathComponent("plugins")),
+            stateStore: stateStore,
+            executor: FailingExecutor(),
+            updateChecker: NoopUpdateChecker()
+        )
+        return (store, stateStore)
+    }
+
+    private func waitForFileRemoval(_ url: URL) async throws {
+        for _ in 0..<200 where FileManager.default.fileExists(atPath: url.path) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testUpdatePluginRotationRemovesOldStateFile() async throws {
+        let root = makeRoot()
+        let states = root.appendingPathComponent("states", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let script = root.appendingPathComponent("p.py")
+        try "print('{}')".write(to: script, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let plugin = PluginConfiguration(name: "P", enabled: false, executablePath: script.path)
+        let (store, stateStore) = makeStore(root: root, states: states)
+        store.configuration.plugins = [plugin]
+
+        try stateStore.save(stateID: plugin.stateID, state: PluginCachedState(updatedAt: Date(), items: []))
+        try stateStore.save(stateID: "other-plugin", state: PluginCachedState(updatedAt: Date(), items: []))
+        let oldFile = states.appendingPathComponent("\(plugin.stateID).json")
+
+        var draft = store.configuration.plugins[0]
+        draft.parameterValues["K"] = "v"
+        XCTAssertTrue(store.updatePlugin(draft))
+        XCTAssertNotEqual(store.configuration.plugins[0].stateID, plugin.stateID)
+        try await waitForFileRemoval(oldFile)
+        // 只清理轮换掉的 stateID，不影响其他插件的缓存。
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: states.appendingPathComponent("other-plugin.json").path)
+        )
+        await store.flushConfiguration()
+    }
+
+    func testRemovePluginDeletesStateFile() async throws {
+        let root = makeRoot()
+        let states = root.appendingPathComponent("states", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let plugin = PluginConfiguration(name: "P", enabled: false, executablePath: root.appendingPathComponent("p.py").path)
+        let (store, stateStore) = makeStore(root: root, states: states)
+        store.configuration.plugins = [plugin]
+        try stateStore.save(stateID: plugin.stateID, state: PluginCachedState(updatedAt: Date(), items: []))
+        let file = states.appendingPathComponent("\(plugin.stateID).json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        store.removePlugin(id: plugin.id)
+        try await waitForFileRemoval(file)
+        await store.flushConfiguration()
+    }
+
+    func testPersistConfigurationClearsStaleLastError() async throws {
+        let root = makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (store, _) = makeStore(root: root, states: root.appendingPathComponent("states"))
+        store.lastError = "stale failure"
+
+        store.persistConfiguration()
+        XCTAssertNil(store.lastError, "Successful config writes must clear the stale error banner")
+
+        store.lastError = "stale failure"
+        store.setTheme(.dark)
+        XCTAssertNil(store.lastError, "Theme changes go through persistConfiguration and clear the banner")
+        await store.flushConfiguration()
+    }
+}
+
 private struct TestConfigStore: ConfigStoring {
     var configuration: AppConfiguration
     var pluginsURL: URL
@@ -536,6 +623,7 @@ private struct CachedEmptyStateStore: PluginStateStoring {
         PluginCachedState(updatedAt: Date(), items: [])
     }
     func save(stateID: String, state: PluginCachedState) throws {}
+    func remove(stateID: String) {}
     func needsRefresh(stateID: String, intervalSeconds: Int) -> Bool { false }
 }
 
@@ -545,6 +633,7 @@ private struct EmptyStateStore: PluginStateStoring {
     }
 
     func save(stateID: String, state: PluginCachedState) throws {}
+    func remove(stateID: String) {}
 
     func needsRefresh(stateID: String, intervalSeconds: Int) -> Bool {
         true

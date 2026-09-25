@@ -16,6 +16,7 @@ extension ConfigStore: ConfigStoring {}
 public protocol PluginStateStoring: Sendable {
     func load(stateID: String) -> PluginCachedState?
     func save(stateID: String, state: PluginCachedState) throws
+    func remove(stateID: String)
     func needsRefresh(stateID: String, intervalSeconds: Int) -> Bool
 }
 

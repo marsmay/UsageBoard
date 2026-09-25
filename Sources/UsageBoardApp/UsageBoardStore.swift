@@ -211,7 +211,9 @@ final class UsageBoardStore: ObservableObject {
     }
 
     /// Lightweight: only schedule a disk write (no snapshot/scheduler/refresh side effects).
+    /// 写盘失败会在保存协调器回调中重新设置 lastError，此处清空反映"本次操作尚未失败"。
     func persistConfiguration() {
+        lastError = nil
         scheduleConfigurationWrite()
     }
 
@@ -294,7 +296,10 @@ final class UsageBoardStore: ObservableObject {
         let executionChanged = original.executablePath != updated.executablePath
             || original.parameterValues != updated.parameterValues
             || original.metadata != updated.metadata
-        if executionChanged { updated.stateID = UUID().uuidString }
+        if executionChanged {
+            updated.stateID = UUID().uuidString
+            discardStateCache(stateID: original.stateID)
+        }
         configuration.plugins[index] = updated
         if executionChanged {
             inflightRefreshTasks[updated.id]?.cancel()
@@ -302,6 +307,14 @@ final class UsageBoardStore: ObservableObject {
         }
         saveConfiguration()
         return true
+    }
+
+    /// stateID 轮换或插件删除后清理旧缓存文件，防止 states/ 累积孤儿文件。
+    private func discardStateCache(stateID: String) {
+        let stateStore = stateStore
+        Task.detached(priority: .utility) {
+            stateStore.remove(stateID: stateID)
+        }
     }
 
     func ensurePluginsDirectory() {
@@ -389,6 +402,7 @@ final class UsageBoardStore: ObservableObject {
 
     func removePlugin(id: UUID) {
         guard let index = configuration.plugins.firstIndex(where: { $0.id == id }) else { return }
+        discardStateCache(stateID: configuration.plugins[index].stateID)
         configuration.plugins.remove(at: index)
         snapshots.removeValue(forKey: id)
         refreshTasks[id]?.cancel()
