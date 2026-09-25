@@ -43,7 +43,7 @@ UsageBoard is a native macOS menu bar app that aggregates quotas, balances, and 
 - Settings forms are generated from script metadata, including segmented controls and directory/file pickers; new plugins are disabled by default and required parameters are validated before enabling.
 - Light, dark, or system theme applied immediately; bundled plugin icons work offline and follow the theme.
 - Chinese and English UI; settings fields support standard editing shortcuts (⌘Z / ⇧⌘Z / ⌘X / ⌘C / ⌘V / ⌘A).
-- Optional launch at login; background update checks every 6 hours, with a menu bar capsule for new versions and a non-modal panel for download and installation.
+- Optional launch at login; background update checks every 6 hours, with a capsule at the top of the popover for new versions and a non-modal panel for download and installation.
 - Quitting waits for pending configuration saves; if saving takes longer than 5 seconds, the quit is cancelled and can be retried once saving completes.
 
 ## Installation
@@ -86,7 +86,7 @@ Per-plugin notes:
 - **DeepSeek**: `LIMIT` sets the displayed balance cap; the progress bar is colored by the balance-to-limit ratio.
 - **Kimi**: queries the 5-hour rolling window and weekly usage. Select the subscription plan manually — Go / Plus / Pro / Max (gray / indigo / blue / orange badges; defaults to Go). The API no longer reports membership level; the badge is omitted when the plan is unset or invalid.
 
-Implementation details: GLM and Codex chart caches (version 2) rebuild the previous 30 days once when upgrading an older cache, then resume incremental updates. Claude, Codex, and Zhipu stats caches are written atomically — a failed write preserves the previous complete cache. Codex decodes UTF-8 line by line and skips corrupted lines entirely. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the compatibility behavior.
+Implementation details: GLM, Codex, and Claude chart caches each track their own cache version and rebuild the previous 30 days once when upgrading, then resume incremental updates. Claude, Codex, and Zhipu stats caches are written atomically — a failed write preserves the previous complete cache. Codex decodes UTF-8 line by line and skips corrupted lines entirely. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the compatibility behavior.
 
 ## Plugin Development
 

@@ -67,11 +67,13 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
-Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。GLM 与 Codex 的图表缓存版本均为 2，首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 因此纠正旧跨日漏计，Codex 因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。
+Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
 
 配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
 
-`PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式；插件参数是否展开路径由插件自身决定。
+`PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据，旧 stateID 的磁盘与内存缓存在后台清理；删除插件同样清理。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式，以 `~` 开头的路径直接报错拒绝；插件参数是否展开路径由插件自身决定。
+
+文件选择器会解析符号链接返回真实路径；addPlugin 与 updatePlugin 统一经 `canonicalExecutablePath` 归一：所选文件与 `plugins/` 目录内同名链接目标一致时改存链接路径本身，app 包迁移或重建后安装器重新指向新包时配置中的执行路径保持有效。
 
 PluginStateStore 以 NSLock 保护的内存缓存加磁盘文件实现两级缓存。文件名由 stateID 清理不安全字符后生成；先原子写盘成功再更新内存。磁盘文件被删除时，已有内存缓存仍可命中。`needsRefresh` 按 updatedAt 判断过期，间隔下限为 5 秒；Store 自身调度使用快照和 nextRefreshAt。
 
@@ -119,7 +121,7 @@ Store.refresh(pluginID:force:)
 
 `PluginExecutor` 对 `.py` 使用 `/usr/bin/env python3 <script>`，其他可执行文件直接运行；不经过 shell。参数为重复的 `--usageboard-param KEY=value`，并注入当前会话语言 `USAGEBOARD_LANGUAGE`。
 
-- 默认执行超时 15 秒；启动后确认插件是独立进程组首领才向该组发送信号。超时、取消或 stdout 超限时向整组发送 SIGTERM，保留最多 1 秒清理宽限期，再对仍存活成员发送 SIGKILL；父进程提前退出不会缩短后代的宽限期。正常退出后仍存活的同组后代也会清理，合法父进程输出仍可成功发布。未确认独立组时只处理直接进程；自行脱离进程组的后代不在保证范围内。
+- 默认执行超时 15 秒；启动后确认插件是独立进程组首领才向该组发送信号。超时、取消或 stdout 超限时向整组发送 SIGTERM，保留最多 1 秒清理宽限期，再对仍存活成员发送 SIGKILL；父进程提前退出不会缩短后代的宽限期。响应 SIGTERM 在宽限期内自行退出的进程按实际退出码报告而非超时；被 SIGKILL 强杀仍报超时，任务取消则报已取消。正常退出后仍存活的同组后代也会清理，合法父进程输出仍可成功发布。未确认独立组时只处理直接进程；自行脱离进程组的后代不在保证范围内。
 - stdout 最多 8 MiB；stderr 保留前 64 KiB 并持续排空，避免管道阻塞。
 - 环境设置 UTF-8，并以 `PYTHONDONTWRITEBYTECODE=1` 禁止写入 Python 字节码。
 - 非零退出码先作为错误处理，优先展示 stderr；退出码 0 时先识别非空顶层 error，再解码成功对象。
@@ -157,14 +159,13 @@ chart 使用 `kind: "line"` 的桶/分段数据，line/bar 的实际渲染由全
 
 App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSStatusItem、NSPopover 和设置 NSWindow；popover 使用 applicationDefined 行为，配合局部/全局点击监听关闭，关闭时清理监听。
 
-启动使用纯 AppKit 生命周期，不声明 SwiftUI Settings scene。AppDelegate 在启动时安装 AppMenu 创建的中英文应用与编辑菜单；编辑命令通过 nil target 沿 responder chain 送到当前输入框，保留撤销、重做、剪切、拷贝、粘贴和全选快捷键。
+启动使用纯 AppKit 生命周期，不声明 SwiftUI Settings scene。AppDelegate 在启动时安装 AppMenu 创建的中英文应用、编辑与窗口菜单；应用菜单含 Settings…（Cmd+,，沿 responder chain 调 AppDelegate.openSettings）与退出，窗口菜单提供 Cmd+W 关闭与 Cmd+M 最小化，编辑命令通过 nil target 沿 responder chain 送到当前输入框，保留撤销、重做、剪切、拷贝、粘贴和全选快捷键。
 
 - 设置窗口初始 800×520，最小 800×480；左侧导航栏宽 120，导航项图标 15 pt、文字 14 pt；插件列表宽 210。输入框和分段控件使用 regular 尺寸，开关使用 small，插件搜索框高 32 pt。
 - popover 固定宽 380，高度随内容缩放，上限为状态栏所在屏幕可用高度的 75%。OverviewView 使用纵向 fixedSize 支持收缩，MeasuredScrollView 按扣除标题等区域后的预算滚动。
 - DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。重置卡默认收起为数量与最近到期摘要，整行点击展开按到期时间排序的两列卡片明细（每排两张，奇数张时最后一张左对齐）；常态使用次级文字色，临近到期才着色。
 - 倒计时、重置时间、用量项目名称和图表统计标题/单位共用 `UB.Text.supporting`（主文字色的 75% 不透明度），保持深浅主题下的可读性。
-- UsageProgressBar 显式 color 优先；未指定或无法识别时，按进度 <60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红。status 不决定颜色。文字按已填充区域遮罩切色，黄/橙/绿底用黑字，蓝/红底用白字。
-- PlanTag 显示大写套餐名，前景色配同色淡背景；badgeColor 优先，否则按 PRO/PLUS/TEAM/FREE/MAX 等预设匹配。
+- UsageProgressBar 显式 color 优先，status 不决定颜色；未指定时的切色阈值与文字遮罩配色、PlanTag 徽章的 badgeColor 值域与预设匹配规则以插件编写说明的协议表为准，不在此重复。
 
 图表由 `TokenChartView.swift` 的 TokenUsageChartView 组织摘要、选择状态和模式，TokenLineChartPlot / TokenBarChartPlot 绘制：
 
@@ -185,15 +186,15 @@ BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径�
 
 在线更新由 Store 组装三步：
 
-1. UpdateChecker 从 Info.plist 的 UBUpdateCheckURL 获取 version.json，按点分整数比较版本（缺段补零，不是完整 SemVer 预发布规则）。
-2. UpdateDownloader 用独立 URLSession 下载 ZIP，接收过程中限制为 64 MiB，请求无进展超时 60 秒、资源总时限 300 秒；失败或取消清理临时 ZIP。成功后用 ditto 解压；校验顶层唯一 UsageBoard.app、应用标识、APPL 类型、期望版本和包内可执行普通文件。
+1. UpdateChecker 从 Info.plist 的 UBUpdateCheckURL 获取 version.json，按点分整数比较版本（缺段补零，不是完整 SemVer 预发布规则）；版本号相同时若服务器 `latestBuild` 与本地 CFBundleVersion 均存在且更高，同样判定为有更新。
+2. UpdateDownloader 用独立 URLSession 下载 ZIP，接收过程中限制为 64 MiB，请求无进展超时 60 秒、资源总时限 300 秒；失败或取消清理临时 ZIP。成功后用 ditto 解压；校验顶层唯一 UsageBoard.app、应用标识、APPL 类型、期望版本、期望 build（声明 latestBuild 时包内 CFBundleVersion 必须一致，拒绝同版本旧包被反复安装）和包内可执行普通文件。
 3. AppRelauncher 在目标目录暂存并签名新 app；旧进程退出后备份旧 app、替换并启动。移动或启动命令失败恢复旧 app，成功后清理备份。
 
 检查和下载要求 HTTPS、无 URL 用户凭据以及成功 HTTP 状态，重定向最终 URL 也校验。Store 分别维护检查/安装忙碌状态。回滚判断基于脚本命令退出状态，不等于新 app 启动后的健康检查。当前下载限制不构成解压配额；仍未实施解压过程体积上限或独立发布者认证，发布及替换继续使用 ad-hoc 签名。
 
-`scripts/build.sh` 停止现有 UsageBoard，构建 release，打包二进制、插件、帮助和图标，注入更新 URL、ad-hoc 签名并启动。首次创建 bundle 使用 0.1.0，已有版本保留；可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
+`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 等待旧实例退出后构建 release 并启动；首次创建 bundle 使用 0.1.0，已有版本保留。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
 
-`scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；更新说明使用第二个参数，否则取最新本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它生成 ZIP/version.json 并保留远端最近三个 ZIP，不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；操作步骤见 README 和项目指引。
+`scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；build 号默认取 UTC `%y%j%H%M`（年+年积日+时+分），可用 APP_BUILD 覆盖。更新说明使用第二个参数，否则取最新本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它生成 ZIP/version.json（含 `latestVersion`、`latestBuild`、`downloadURL`、`notes`）并保留远端最近三个 ZIP，不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；操作步骤见 README 和项目指引。关于页显示 `版本 (build)` 供核对。
 
 ## 8. 验证与维护
 

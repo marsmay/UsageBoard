@@ -43,7 +43,7 @@ UsageBoard 是原生 macOS 菜单栏应用，以插件方式聚合 API、模型�
 - 插件参数表单由脚本元数据自动生成，支持分段控件、目录和文件选择器；新插件默认不启用，启用前校验必填参数。
 - 浅色 / 深色 / 跟随系统主题，切换即时生效；内置插件图标离线可用并随主题切换。
 - 中英文界面；设置输入框支持标准编辑快捷键（⌘Z / ⇧⌘Z / ⌘X / ⌘C / ⌘V / ⌘A）。
-- 支持开机启动；后台每 6 小时检查更新，新版本以菜单栏胶囊提示，在非模态面板中下载安装。
+- 支持开机启动；后台每 6 小时检查更新，新版本在弹层顶部以胶囊提示，在非模态面板中下载安装。
 - 退出时等待配置保存，超过 5 秒取消本次退出，保存完成后可再次退出。
 
 ## 安装
@@ -86,7 +86,7 @@ xattr -cr /Applications/UsageBoard.app
 - **DeepSeek**：`LIMIT` 设置余额展示上限，进度条按余额占上限比例着色。
 - **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Go / Plus / Pro / Max（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Go），接口不再提供会员等级，未选择或值无效时省略徽标。
 
-实现细节：GLM 与 Codex 的图表缓存（版本 2）升级旧缓存时一次性重建近 30 天数据，随后恢复增量更新；Claude、Codex 与智谱统计缓存原子写入，失败保留旧缓存；Codex 按行解码 UTF-8，损坏行整行跳过；Claude 空套餐名回退配置值再到 pro；Kimi 省略时区不明的重置时间；MiniMax 对显式 null 或非对象 `base_resp` 返回解析失败，缺失字段保持兼容。
+实现细节：GLM、Codex 与 Claude 的图表缓存各自维护版本号，升级旧缓存时一次性重建近 30 天数据，随后恢复增量更新；Claude、Codex 与智谱统计缓存原子写入，失败保留旧缓存；Codex 按行解码 UTF-8，损坏行整行跳过；Claude 空套餐名回退配置值再到 pro；Kimi 省略时区不明的重置时间；MiniMax 对显式 null 或非对象 `base_resp` 返回解析失败，缺失字段保持兼容。
 
 ## 插件开发
 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-`_common.py` 提供参数解析（`parse_usageboard_params`）、语言检测（`app_language`）、翻译工厂（`make_translator`）、输出函数（`success` / `failure`）、颜色与状态计算（`color_for` / `status_for` / `numeric`）以及统一的 HTTP 错误处理（`handle_http_error` / `handle_url_error`），完整函数列表见源码。
+`_common.py` 提供参数解析（`parse_usageboard_params`）、语言检测（`app_language`）、翻译工厂（`make_translator`）、输出函数（`success` / `failure`）、颜色与状态计算（`color_for` / `status_for` / `numeric`）、不跟随重定向的 JSON 请求（`fetch_json`）、统一错误分类（`run_query`）与 API Key 清洗（`require_api_key`），完整函数列表见源码。
 
 ### 返回数据格式
 
