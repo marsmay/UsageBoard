@@ -168,16 +168,16 @@ class TestStatusThresholds(unittest.TestCase):
     """status_for thresholds should match other plugins: ≥90 critical, ≥75 warning, else normal."""
 
     def test_90_is_critical(self):
-        self.assertEqual(plugin.status_for(90), "critical")
+        self.assertEqual(plugin.status_for_pct(90), "critical")
 
     def test_75_is_warning(self):
-        self.assertEqual(plugin.status_for(75), "warning")
+        self.assertEqual(plugin.status_for_pct(75), "warning")
 
     def test_74_is_normal(self):
-        self.assertEqual(plugin.status_for(74), "normal")
+        self.assertEqual(plugin.status_for_pct(74), "normal")
 
     def test_0_is_normal(self):
-        self.assertEqual(plugin.status_for(0), "normal")
+        self.assertEqual(plugin.status_for_pct(0), "normal")
 
 
 class TestSuccessSchemaVersion(unittest.TestCase):

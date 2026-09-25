@@ -18,6 +18,8 @@ public struct ConfigStore: Sendable {
         return base.appendingPathComponent("UsageBoard", isDirectory: true)
     }
 
+    /// 静态便捷方法基于默认配置目录，仅供无自定义 fileURL 的默认初始化使用
+    /// （BundledPluginInstaller / PluginStateStore 的默认参数）；自定义路径时以实例推导为准。
     public static func statesDirectoryURL() -> URL {
         defaultConfigurationDirectoryURL().appendingPathComponent("states", isDirectory: true)
     }

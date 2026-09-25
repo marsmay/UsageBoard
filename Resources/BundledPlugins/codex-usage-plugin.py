@@ -61,7 +61,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
 from typing import Any
 
@@ -79,6 +79,7 @@ from _common import (  # noqa: E402
     mtime_at_least,
     normalize_model_name,
     parse_usageboard_params,
+    status_for_pct,
     success,
 )
 
@@ -281,7 +282,7 @@ def _cache_path(data_dir: str) -> str:
     return os.path.join(os.path.expanduser(data_dir), CACHE_FILENAME)
 
 
-def _parse_date(s: str) -> ...:
+def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 
@@ -605,7 +606,7 @@ def build_items(payload: dict[str, Any], language: str) -> tuple[list[dict[str, 
                 "limit": 100,
                 "displayStyle": "percent",
                 "resetAt": get_reset_at(five_hour),
-                "status": "critical" if used >= 90 else "warning" if used >= 75 else "normal",
+                "status": status_for_pct(used),
                 "color": color_for_pct(used),
             })
 
@@ -620,7 +621,7 @@ def build_items(payload: dict[str, Any], language: str) -> tuple[list[dict[str, 
                 "limit": 100,
                 "displayStyle": "percent",
                 "resetAt": get_reset_at(weekly),
-                "status": "critical" if used >= 90 else "warning" if used >= 75 else "normal",
+                "status": status_for_pct(used),
                 "color": color_for_pct(used),
             })
 

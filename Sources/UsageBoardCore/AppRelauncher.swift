@@ -10,10 +10,11 @@ public enum AppRelauncher {
         #!/bin/bash
         mkdir -p ~/Library/Logs/UsageBoard
         exec 2>>~/Library/Logs/UsageBoard/relauncher.log
+        # trap 兜底：set -e 下 open 失败也要清理临时脚本自身
+        trap 'rm -f "$0"' EXIT
         set -e
         while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done
         open \(escapedCurrent)
-        rm -f "$0"
         """
 
         let scriptURL = FileManager.default.temporaryDirectory
@@ -23,7 +24,12 @@ public enum AppRelauncher {
 
         let process = Process()
         process.executableURL = scriptURL
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            try? FileManager.default.removeItem(at: scriptURL)
+            throw error
+        }
     }
 
     public static func relaunch(replacingWith newBundleURL: URL, cleanupDirectoryURL: URL? = nil) throws {
@@ -56,7 +62,12 @@ public enum AppRelauncher {
 
         let process = Process()
         process.executableURL = scriptURL
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            try? FileManager.default.removeItem(at: scriptURL)
+            throw error
+        }
         launched = true
     }
 

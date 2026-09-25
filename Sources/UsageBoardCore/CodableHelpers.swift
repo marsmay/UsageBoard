@@ -39,7 +39,7 @@ extension Encodable {
     }
 }
 
-extension Equatable {
+enum LocalizedStrings {
     static func localizedOptionalValue(base: String?, translations: [String: String], language: AppLanguage) -> String? {
         let raw = translations[language.rawValue]
         if let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

@@ -41,11 +41,8 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -54,11 +51,12 @@ from _common import (  # noqa: E402
     app_language,
     color_for_pct,
     failure,
-    handle_http_error,
-    handle_url_error,
+    fetch_json,
     make_translator,
     numeric,
     parse_usageboard_params,
+    require_api_key,
+    run_query,
     status_for,
     success,
 )
@@ -71,15 +69,10 @@ KNOWN_MODELS = {"general", "video"}
 
 
 def fetch_remains(api_key: str) -> dict[str, Any]:
-    request = urllib.request.Request(
-        ENDPOINT,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return fetch_json(ENDPOINT, headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }, timeout=10)
 
 
 def reset_at_from_remaining_ms(value: Any) -> str | None:
@@ -173,22 +166,13 @@ def main() -> int:
         "invalid_api_key": {"zh-Hans": "API Key 无效，请检查配置", "en": "Invalid API Key. Check your settings."},
     })
 
-    api_key = params.get("API_KEY")
+    api_key = require_api_key(params)
     if not api_key:
         return failure(translate(language, "missing_api_key"))
 
-    try:
-        payload = fetch_remains(api_key)
-    except urllib.error.HTTPError as error:
-        return handle_http_error(error, translate, language)
-    except urllib.error.URLError as error:
-        return handle_url_error(error, translate, language)
-    except TimeoutError:
-        return failure(translate(language, "request_timeout"))
-    except json.JSONDecodeError:
-        return failure(translate(language, "usage_parse_failed"))
-    except Exception:
-        return failure(translate(language, "network_error"))
+    payload = run_query(lambda: fetch_remains(api_key), translate, language)
+    if payload is None:
+        return 0
 
     try:
         base_resp = payload.get("base_resp", {})

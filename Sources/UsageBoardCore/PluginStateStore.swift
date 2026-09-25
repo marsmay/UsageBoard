@@ -2,6 +2,7 @@
 
 private final class StateCache: @unchecked Sendable {
     private var store: [String: PluginCachedState] = [:]
+    private var missing: Set<String> = []
     private let lock = NSLock()
 
     func get(_ key: String) -> PluginCachedState? {
@@ -14,12 +15,26 @@ private final class StateCache: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         store[key] = value
+        missing.remove(key)
     }
 
     func remove(_ key: String) {
         lock.lock()
         defer { lock.unlock() }
         store.removeValue(forKey: key)
+    }
+
+    /// 磁盘上确认不存在的 stateID：命中负缓存时跳过重复的磁盘探测（调度循环按插件轮询）。
+    func isKnownMissing(_ key: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return missing.contains(key)
+    }
+
+    func markMissing(_ key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        missing.insert(key)
     }
 }
 
@@ -33,8 +48,12 @@ public struct PluginStateStore: Sendable {
 
     public func load(stateID: String) -> PluginCachedState? {
         if let cached = cache.get(stateID) { return cached }
+        if cache.isKnownMissing(stateID) { return nil }
         let fileURL = fileURL(for: stateID)
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            cache.markMissing(stateID)
+            return nil
+        }
         guard let state = try? UsageBoardJSON.decoder().decode(PluginCachedState.self, from: data) else { return nil }
         cache.set(stateID, state)
         return state

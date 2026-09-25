@@ -46,7 +46,7 @@ public struct PluginParameterOption: Codable, Equatable, Identifiable, Sendable 
     }
 
     public func localizedLabel(language: AppLanguage) -> String {
-        Self.localizedValue(base: label, translations: labelTranslations, language: language)
+        LocalizedStrings.localizedValue(base: label, translations: labelTranslations, language: language)
     }
 }
 
@@ -123,15 +123,24 @@ public struct PluginParameterMetadata: Codable, Equatable, Identifiable, Sendabl
     }
 
     public func localizedLabel(language: AppLanguage) -> String {
-        Self.localizedValue(base: label, translations: labelTranslations, language: language)
+        LocalizedStrings.localizedValue(base: label, translations: labelTranslations, language: language)
     }
 
     public func localizedPlaceholder(language: AppLanguage) -> String? {
-        let translated = placeholderTranslations[language.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let translated, !translated.isEmpty {
-            return translated
+        LocalizedStrings.localizedOptionalValue(base: placeholder, translations: placeholderTranslations, language: language)
+    }
+}
+
+extension PluginConfiguration {
+    /// 重新解析当前执行路径的 metadata，并为新增参数补默认值；已有参数值保留。
+    /// addPlugin/updatePlugin/reloadMetadata 及设置页草稿共用同一套归一逻辑。
+    public func reloadingMetadata() -> PluginConfiguration {
+        var updated = self
+        updated.metadata = PluginMetadataParser.parse(fileURL: URL(fileURLWithPath: executablePath))
+        for parameter in updated.metadata?.parameters ?? [] where updated.parameterValues[parameter.name] == nil {
+            updated.parameterValues[parameter.name] = parameter.defaultValue ?? ""
         }
-        return placeholder
+        return updated
     }
 }
 
@@ -188,11 +197,11 @@ public struct PluginMetadata: Codable, Equatable, Sendable {
     }
 
     public func localizedName(language: AppLanguage) -> String? {
-        Self.localizedOptionalValue(base: name, translations: nameTranslations, language: language)
+        LocalizedStrings.localizedOptionalValue(base: name, translations: nameTranslations, language: language)
     }
 
     public func localizedDescription(language: AppLanguage) -> String? {
-        Self.localizedOptionalValue(base: description, translations: descriptionTranslations, language: language)
+        LocalizedStrings.localizedOptionalValue(base: description, translations: descriptionTranslations, language: language)
     }
 }
 

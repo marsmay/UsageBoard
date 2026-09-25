@@ -67,6 +67,8 @@ public struct UpdateDownloader: Sendable {
 
         let response = try await downloadBody(from: url, to: tempURL)
         try UpdateChecker.validateResponse(response)
+        // 下载完成后的取消也应停止后续解压/校验，而不只是已完成的传输任务。
+        try Task.checkCancellation()
 
         let extractDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("usageboard-update-\(UUID().uuidString)")

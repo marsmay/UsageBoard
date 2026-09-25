@@ -69,16 +69,21 @@ public struct PluginResetCredit: Codable, Equatable, Identifiable, Sendable {
     /// Expiry timestamp reusing the same today/tomorrow rules as `UsageItem.resetText`.
     public func expiryText(now: Date = Date(), language: AppLanguage = .zhHans) -> String {
         guard let expiresAt else { return "--" }
+        return Self.relativeDayTimeText(expiresAt, now: now, language: language)
+    }
+
+    /// 今天/明天用相对表述，其余显示 月日+时间；expiryText 与 resetText 共用。
+    static func relativeDayTimeText(_ date: Date, now: Date, language: AppLanguage) -> String {
         let calendar = Calendar.current
-        let time = expiresAt.formatted(date: .omitted, time: .shortened)
-        if calendar.isDate(expiresAt, inSameDayAs: now) {
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if calendar.isDate(date, inSameDayAs: now) {
             return language == .en ? "Today \(time)" : "今天 \(time)"
         }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(expiresAt, inSameDayAs: tomorrow) {
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
             return language == .en ? "Tomorrow \(time)" : "明天 \(time)"
         }
-        let date = expiresAt.formatted(.dateTime.month(.defaultDigits).day(.defaultDigits))
-        return "\(date) \(time)"
+        let day = date.formatted(.dateTime.month(.defaultDigits).day(.defaultDigits))
+        return "\(day) \(time)"
     }
 
     /// Remaining validity: "剩余 22 天" / "22 days left", switching to hours under a day.
@@ -233,16 +238,7 @@ public struct UsageItem: Codable, Equatable, Identifiable, Sendable {
 
     public func resetText(now: Date = Date(), language: AppLanguage = .zhHans) -> String {
         guard let resetAt, resetAt > now else { return "--" }
-        let calendar = Calendar.current
-        let time = resetAt.formatted(date: .omitted, time: .shortened)
-        if calendar.isDate(resetAt, inSameDayAs: now) {
-            return language == .en ? "Today \(time)" : "今天 \(time)"
-        }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(resetAt, inSameDayAs: tomorrow) {
-            return language == .en ? "Tomorrow \(time)" : "明天 \(time)"
-        }
-        let date = resetAt.formatted(.dateTime.month(.defaultDigits).day(.defaultDigits))
-        return "\(date) \(time)"
+        return PluginResetCredit.relativeDayTimeText(resetAt, now: now, language: language)
     }
 
     private static func formatNumber(_ value: Double) -> String {

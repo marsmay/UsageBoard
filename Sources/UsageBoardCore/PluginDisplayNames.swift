@@ -25,7 +25,7 @@ public enum PluginDisplayNames {
         }
 
         if !configuredName.isEmpty {
-            return plugin.name
+            return configuredName
         }
 
         return language == .en ? "Untitled" : "未命名"

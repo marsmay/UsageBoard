@@ -283,10 +283,7 @@ final class UsageBoardStore: ObservableObject {
             return false
         }
         if original.executablePath != updated.executablePath {
-            updated.metadata = PluginMetadataParser.parse(fileURL: URL(fileURLWithPath: updated.executablePath))
-            for parameter in updated.metadata?.parameters ?? [] where updated.parameterValues[parameter.name] == nil {
-                updated.parameterValues[parameter.name] = parameter.defaultValue ?? ""
-            }
+            updated = updated.reloadingMetadata()
         }
         let missing = missingRequiredParameters(for: updated)
         guard !updated.enabled || missing.isEmpty else {
@@ -365,13 +362,7 @@ final class UsageBoardStore: ObservableObject {
 
     func reloadMetadata(pluginID: UUID) {
         guard let index = configuration.plugins.firstIndex(where: { $0.id == pluginID }) else { return }
-        let fileURL = URL(fileURLWithPath: configuration.plugins[index].executablePath)
-        let metadata = PluginMetadataParser.parse(fileURL: fileURL)
-        configuration.plugins[index].metadata = metadata
-
-        for parameter in metadata?.parameters ?? [] where configuration.plugins[index].parameterValues[parameter.name] == nil {
-            configuration.plugins[index].parameterValues[parameter.name] = parameter.defaultValue ?? ""
-        }
+        configuration.plugins[index] = configuration.plugins[index].reloadingMetadata()
     }
 
     private func reloadAllMetadata() {

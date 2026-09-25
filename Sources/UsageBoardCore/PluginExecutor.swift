@@ -45,6 +45,10 @@ public struct PluginExecutor: Sendable {
         guard !configuration.executablePath.isEmpty else {
             return failed(configuration: configuration, displayName: displayName, message: text(.missingExecutablePath, language: language))
         }
+        // `~` 只在 shell 中展开；两类插件统一拒绝而非静默展开或跑错脚本（architecture.md §3）。
+        guard !configuration.executablePath.hasPrefix("~") else {
+            return failed(configuration: configuration, displayName: displayName, message: text(.tildePath, language: language))
+        }
 
         let process = Process()
         process.environment = pluginEnvironment()
@@ -102,7 +106,9 @@ public struct PluginExecutor: Sendable {
 
         let deadline = DispatchTime.now() + timeoutSeconds
         var finished = false
-        while !Task.isCancelled && !outputBuffer.exceededLimit {
+        var wasCancelled = false
+        while !outputBuffer.exceededLimit {
+            if Task.isCancelled { wasCancelled = true; break }
             if exitSemaphore.wait(timeout: min(.now() + 0.05, deadline)) == .success {
                 finished = true
                 break
@@ -110,19 +116,25 @@ public struct PluginExecutor: Sendable {
             if DispatchTime.now() >= deadline { break }
         }
         let signalTarget = leadsProcessGroup ? -pluginPid : pluginPid
-        if !finished || (leadsProcessGroup && Darwin.kill(signalTarget, 0) == 0) {
+        if !finished || (leadsProcessGroup && Self.isAlive(signalTarget)) {
             // A normally exited parent may still leave descendants holding the
             // pipes. Give the whole group time to clean up, even if the parent
             // exits immediately in response to SIGTERM.
             Darwin.kill(signalTarget, SIGTERM)
             let graceDeadline = DispatchTime.now() + 1.0
-            while Darwin.kill(signalTarget, 0) == 0 && DispatchTime.now() < graceDeadline {
+            while Self.isAlive(signalTarget) && DispatchTime.now() < graceDeadline {
                 Thread.sleep(forTimeInterval: 0.01)
             }
-            if Darwin.kill(signalTarget, 0) == 0 {
+            var didKill = false
+            if Self.isAlive(signalTarget) {
                 Darwin.kill(signalTarget, SIGKILL)
+                didKill = true
             }
-            if !finished { _ = exitSemaphore.wait(timeout: .now() + 1.0) }
+            // 响应 SIGTERM 在宽限期内自行退出的进程按实际退出处理，不误报超时；
+            // 被 SIGKILL 强杀的进程仍按超时/取消报告。
+            if !finished, !didKill, exitSemaphore.wait(timeout: .now() + 1.0) == .success {
+                finished = true
+            }
         }
 
         // Wait briefly for readability handlers to drain remaining buffered data after EOF.
@@ -135,6 +147,9 @@ public struct PluginExecutor: Sendable {
             return failed(configuration: configuration, displayName: displayName, message: text(.outputTooLarge, language: language))
         }
         if !finished {
+            if wasCancelled {
+                return failed(configuration: configuration, displayName: displayName, message: text(.cancelled, language: language))
+            }
             return failed(configuration: configuration, displayName: displayName, message: text(.timeout, language: language))
         }
 
@@ -228,10 +243,17 @@ public struct PluginExecutor: Sendable {
 
     private enum Message {
         case missingExecutablePath
+        case tildePath
         case timeout
+        case cancelled
         case outputTooLarge
         case exitCode(Int32)
         case jsonParseFailed
+    }
+
+    /// 存活探测：EPERM 表示进程存在但无权发信号，同样视为存活。
+    private static func isAlive(_ pid: pid_t) -> Bool {
+        Darwin.kill(pid, 0) == 0 || errno == EPERM
     }
 
     private func text(_ message: Message, language: AppLanguage) -> String {
@@ -242,6 +264,14 @@ public struct PluginExecutor: Sendable {
             return "Executable path is not configured"
         case (.missingExecutablePath, .zhHans):
             return "未配置可执行路径"
+        case (.tildePath, .en):
+            return "Executable path must be absolute; '~' is not expanded"
+        case (.tildePath, .zhHans):
+            return "可执行路径需为绝对路径，不支持展开 ~"
+        case (.cancelled, .en):
+            return "Plugin execution cancelled"
+        case (.cancelled, .zhHans):
+            return "插件执行已取消"
         case (.timeout, .en):
             return "Plugin execution timed out"
         case (.timeout, .zhHans):

@@ -8,7 +8,6 @@ import re
 import tempfile
 import ssl
 import socket
-import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -121,8 +120,7 @@ def numeric(value: Any) -> float:
         return 0
 
 
-def status_for(used: float, total: float) -> str:
-    pct = used / total * 100 if total > 0 else 0
+def status_for_pct(pct: float) -> str:
     if pct >= 90:
         return "critical"
     if pct >= 75:
@@ -130,15 +128,12 @@ def status_for(used: float, total: float) -> str:
     return "normal"
 
 
+def status_for(used: float, total: float) -> str:
+    return status_for_pct(used / total * 100 if total > 0 else 0)
+
+
 def color_for(used: float, total: float) -> str:
-    pct = used / total * 100 if total > 0 else 0
-    if pct >= 90:
-        return "red"
-    if pct >= 80:
-        return "orange"
-    if pct >= 60:
-        return "yellow"
-    return "blue"
+    return color_for_pct(used / total * 100 if total > 0 else 0)
 
 
 def color_for_pct(pct: float) -> str:
@@ -172,6 +167,36 @@ def fetch_json(url: str, headers: dict[str, str] | None = None, timeout: float =
     opener = urllib.request.build_opener(_NoRedirect)
     with opener.open(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def run_query(fetch: Any, translate: Any, language: str) -> Any:
+    """Run a fetch callable and classify failures into the standard error output.
+
+    Returns the payload on success; returns None after printing the failure
+    JSON, so callers do `payload = run_query(...); if payload is None: return 0`.
+    """
+    try:
+        return fetch()
+    except urllib.error.HTTPError as error:
+        handle_http_error(error, translate, language)
+    except urllib.error.URLError as error:
+        handle_url_error(error, translate, language)
+    except TimeoutError:
+        failure(translate(language, "request_timeout"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        failure(translate(language, "usage_parse_failed"))
+    except Exception:
+        failure(translate(language, "network_error"))
+    return None
+
+
+def require_api_key(params: dict[str, str]) -> str:
+    """Stripped API key from params; empty string means missing.
+
+    Pasted keys often carry trailing whitespace/newlines, which would otherwise
+    produce a confusing 401 instead of the missing-key error.
+    """
+    return (params.get("API_KEY") or "").strip()
 
 
 def handle_http_error(error: urllib.error.HTTPError, translate: Any, language: str) -> int:

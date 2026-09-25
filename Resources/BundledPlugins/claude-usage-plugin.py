@@ -77,6 +77,7 @@ from _common import (  # noqa: E402
     save_json_cache,
     app_language as _app_language,
     color_for_pct,
+    status_for_pct,
     failure,
     filter_by_mtime,
     make_translator,
@@ -92,11 +93,6 @@ CACHE_FILENAME = ".usageboard-chart-cache.json"
 PARSE_ERROR = "parse_error"
 REQUEST_TIMEOUT = "request_timeout"
 NETWORK_ERROR = "network_error"
-
-def status_for(pct):
-    if pct >= 90: return "critical"
-    if pct >= 75: return "warning"
-    return "normal"
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -208,7 +204,7 @@ def build_items_from_oauth(data, lang, translate):
             "limit": 100,
             "resetAt": fh_resets,
             "color": color_for_pct(fh_pct),
-            "status": status_for(fh_pct),
+            "status": status_for_pct(fh_pct),
         },
         {
             "id": "claude-seven-day",
@@ -218,7 +214,7 @@ def build_items_from_oauth(data, lang, translate):
             "limit": 100,
             "resetAt": sd_resets,
             "color": color_for_pct(sd_pct),
-            "status": status_for(sd_pct),
+            "status": status_for_pct(sd_pct),
         },
     ]
 

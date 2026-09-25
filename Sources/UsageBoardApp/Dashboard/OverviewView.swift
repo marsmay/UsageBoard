@@ -43,7 +43,7 @@ struct OverviewView: View {
                     .help(AppLocalization.shared.text(.refresh))
                     .accessibilityLabel(AppLocalization.shared.text(.refresh))
                     SettingsButton(iconSize: 13, buttonSize: 24)
-                    QuitButton(language: store.activeLanguage, iconSize: 13, buttonSize: 24)
+                    QuitButton(iconSize: 13, buttonSize: 24)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -146,7 +146,6 @@ struct SettingsButton: View {
 }
 
 struct QuitButton: View {
-    var language: AppLanguage = .zhHans
     var iconSize: CGFloat = 13
     var buttonSize: CGFloat = 24
     private var strings: AppLocalization {

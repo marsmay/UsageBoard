@@ -26,11 +26,8 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,14 +36,14 @@ from _common import (  # noqa: E402
     app_language,
     color_for,
     failure,
-    handle_http_error,
-    handle_url_error,
+    fetch_json,
     make_translator,
     numeric,
     parse_usageboard_params,
+    require_api_key,
+    run_query,
     status_for,
     success,
-    utc_now_iso,
 )
 
 
@@ -54,9 +51,7 @@ ENDPOINT = "https://api.tavily.com/usage"
 
 
 def fetch_usage(api_key: str) -> dict[str, Any]:
-    request = urllib.request.Request(ENDPOINT, headers={"Authorization": f"Bearer {api_key}"})
-    with urllib.request.urlopen(request, timeout=5) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return fetch_json(ENDPOINT, headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
 
 
 def next_month_start_iso() -> str:
@@ -129,22 +124,13 @@ def main() -> int:
         "no_quota_items": {"zh-Hans": "未获取到用量数据", "en": "No usage data found."},
     })
 
-    api_key = params.get("API_KEY")
+    api_key = require_api_key(params)
     if not api_key:
         return failure(translate(language, "missing_api_key"))
 
-    try:
-        payload = fetch_usage(api_key)
-    except urllib.error.HTTPError as error:
-        return handle_http_error(error, translate, language)
-    except urllib.error.URLError as error:
-        return handle_url_error(error, translate, language)
-    except TimeoutError:
-        return failure(translate(language, "request_timeout"))
-    except json.JSONDecodeError:
-        return failure(translate(language, "usage_parse_failed"))
-    except Exception:
-        return failure(translate(language, "network_error"))
+    payload = run_query(lambda: fetch_usage(api_key), translate, language)
+    if payload is None:
+        return 0
 
     try:
         items = build_items(payload, language, translate)

@@ -224,11 +224,7 @@ struct PluginSettingsView: View {
 
     @discardableResult
     private func saveDraft() -> Bool {
-        if let draft,
-           let original = store.configuration.plugins.first(where: { $0.id == draft.id }),
-           original.executablePath != draft.executablePath {
-            reloadDraftMetadata()
-        }
+        // 路径变化时 updatePlugin 内部会统一重载 metadata，无需在此预解析。
         guard let draft, store.updatePlugin(draft) else { return false }
         self.draft = store.configuration.plugins.first(where: { $0.id == draft.id })
         return true
@@ -259,14 +255,7 @@ struct PluginSettingsView: View {
 
     private func reloadDraftMetadata() {
         guard let draft else { return }
-        let fileURL = URL(fileURLWithPath: draft.executablePath)
-        let metadata = PluginMetadataParser.parse(fileURL: fileURL)
-        var updated = draft
-        updated.metadata = metadata
-        for parameter in metadata?.parameters ?? [] where updated.parameterValues[parameter.name] == nil {
-            updated.parameterValues[parameter.name] = parameter.defaultValue ?? ""
-        }
-        self.draft = updated
+        self.draft = draft.reloadingMetadata()
     }
 
     private func pluginListRow(_ plugin: PluginConfiguration) -> some View {

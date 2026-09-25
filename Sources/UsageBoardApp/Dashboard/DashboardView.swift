@@ -21,7 +21,7 @@ struct DashboardView: View {
     var body: some View {
         Group {
             if enabledPlugins.isEmpty {
-                EmptyPluginsView(language: store.activeLanguage)
+                EmptyPluginsView()
             } else {
                 switch mode {
                 case .grouped:
@@ -101,14 +101,6 @@ struct DashboardView: View {
         .onChange(of: enabledPluginIDs) { _ in
             ensureSelectedTab()
         }
-        .toolbar {
-            Button {
-                store.refreshAll()
-            } label: {
-                Label(strings.text(.refresh), systemImage: "arrow.clockwise")
-            }
-            QuitButton(language: store.activeLanguage)
-        }
     }
 
     private var selectedPlugin: PluginConfiguration? {
@@ -144,7 +136,6 @@ struct DashboardView: View {
 
 struct EmptyPluginsView: View {
     @Environment(\.openSettings) private var openSettings
-    var language: AppLanguage
     private var strings: AppLocalization {
         .shared
     }

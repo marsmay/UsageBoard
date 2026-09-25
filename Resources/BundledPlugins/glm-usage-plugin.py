@@ -41,7 +41,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sys
 import urllib.error
@@ -57,12 +56,13 @@ from _common import (  # noqa: E402
     app_language,
     color_for_pct,
     failure,
-    handle_http_error,
-    handle_url_error,
+    fetch_json,
     make_translator,
     parse_usageboard_params,
+    require_api_key,
+    run_query,
+    status_for_pct,
     success,
-    utc_now_iso,
 )
 
 
@@ -90,15 +90,10 @@ TRANSLATIONS = {
 translate = make_translator(TRANSLATIONS)
 
 def fetch_limits(api_key: str) -> dict[str, Any]:
-    request = urllib.request.Request(
-        QUOTA_ENDPOINT,
-        headers={
-            "Authorization": api_key,
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=5) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return fetch_json(QUOTA_ENDPOINT, headers={
+        "Authorization": api_key,
+        "Content-Type": "application/json",
+    }, timeout=5)
 
 
 def fetch_model_usage(api_key: str, start_time: datetime, end_time: datetime) -> dict[str, Any]:
@@ -108,15 +103,14 @@ def fetch_model_usage(api_key: str, start_time: datetime, end_time: datetime) ->
             "endTime": format_query_time(end_time),
         }
     )
-    request = urllib.request.Request(
+    return fetch_json(
         f"{MODEL_USAGE_ENDPOINT}?{query}",
         headers={
             "Authorization": api_key,
             "Content-Type": "application/json",
         },
+        timeout=8,
     )
-    with urllib.request.urlopen(request, timeout=8) as response:
-        return json.loads(response.read().decode("utf-8"))
 
 
 def format_query_time(value: datetime) -> str:
@@ -182,6 +176,10 @@ def normalize_timestamp(value: Any) -> float | None:
                 return None
 
     if not isinstance(value, (int, float)) or value <= 0:
+        return None
+
+    # 上界拒绝异常巨大的值（如 token 数误入时间字段），fromtimestamp 会抛 OverflowError
+    if value > 4_000_000_000_000:
         return None
 
     # GLM docs describe nextResetTime as milliseconds, but accept seconds too
@@ -277,15 +275,9 @@ def item(
     reset_at: str | None,
     display_style: str = "percent",
 ) -> dict[str, Any]:
-    # status thresholds: 90+ critical, 75+ warning — intentionally stricter than color thresholds
-    status = "unknown"
+    # status 阈值（90 critical / 75 warning）比颜色阈值更严格
     pct = used / limit * 100 if limit > 0 else 0
-    if pct >= 90:
-        status = "critical"
-    elif pct >= 75:
-        status = "warning"
-    else:
-        status = "normal"
+    status = status_for_pct(pct)
 
     return {
         "id": item_id,
@@ -784,7 +776,7 @@ def chart_message(message: str, period: str, buckets: list[datetime], bucket_uni
 
 def main() -> int:
     params = parse_usageboard_params(sys.argv[1:])
-    api_key = params.get("API_KEY")
+    api_key = require_api_key(params)
     period = params.get("STAT_PERIOD", "7d").lower()
     if period not in ("none", "7d", "15d", "30d"):
         period = "7d"
@@ -794,18 +786,9 @@ def main() -> int:
     if not api_key:
         return failure(translate(language, "missing_api_key"))
 
-    try:
-        payload = fetch_limits(api_key)
-    except urllib.error.HTTPError as error:
-        return handle_http_error(error, translate, language)
-    except urllib.error.URLError as error:
-        return handle_url_error(error, translate, language)
-    except TimeoutError:
-        return failure(translate(language, "request_timeout"))
-    except json.JSONDecodeError:
-        return failure(translate(language, "usage_parse_failed"))
-    except Exception:
-        return failure(translate(language, "network_error"))
+    payload = run_query(lambda: fetch_limits(api_key), translate, language)
+    if payload is None:
+        return 0
 
     try:
         items, badge = build_items(payload, language)
