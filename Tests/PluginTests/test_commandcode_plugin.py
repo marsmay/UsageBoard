@@ -158,24 +158,26 @@ class CommandCodeTests(unittest.TestCase):
             self.assertEqual(output['error'], expected)
 
     def test_fetch_contract_and_no_redirect(self):
-        response = MagicMock()
-        response.__enter__.return_value = response
-        response.read.return_value = json.dumps(CREDITS).encode()
-        opener = MagicMock()
-        opener.open.return_value = response
-        with patch.object(plugin.urllib.request, 'build_opener', return_value=opener):
+        # fetch_json（_common）内置 NoRedirect，此处验证契约传递；重定向行为由 test_common_cache 覆盖。
+        captured = {}
+
+        def fake_fetch_json(url, headers=None, timeout=10.0):
+            captured.update(url=url, headers=headers, timeout=timeout)
+            return CREDITS
+
+        with patch.object(plugin, 'fetch_json', side_effect=fake_fetch_json):
             self.assertEqual(plugin.fetch_billing('fake-key', 'credits', 6), CREDITS)
-        request = opener.open.call_args.args[0]
-        self.assertEqual(request.full_url, 'https://api.commandcode.ai/alpha/billing/credits')
-        self.assertEqual(request.get_method(), 'GET')
-        self.assertEqual(request.get_header('Authorization'), 'Bearer fake-key')
-        self.assertEqual(request.get_header('X-api-key'), 'fake-key')
-        self.assertEqual(request.get_header('User-agent'), 'UsageBoard')
-        self.assertIsNone(plugin.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.com'))
-        for invalid in [[], {'success': False}]:
-            response.read.return_value = json.dumps(invalid).encode()
-            with patch.object(plugin.urllib.request, 'build_opener', return_value=opener), self.assertRaises(ValueError):
-                plugin.fetch_billing('fake-key', 'credits', 6)
+        self.assertEqual(captured['url'], 'https://api.commandcode.ai/alpha/billing/credits')
+        self.assertEqual(captured['headers']['Authorization'], 'Bearer fake-key')
+        self.assertEqual(captured['headers']['x-api-key'], 'fake-key')
+        self.assertEqual(captured['headers']['User-Agent'], 'UsageBoard')
+        self.assertEqual(captured['timeout'], 6)
+
+        def invalid_fetch_json(url, headers=None, timeout=10.0):
+            return []
+
+        with patch.object(plugin, 'fetch_json', side_effect=invalid_fetch_json), self.assertRaises(ValueError):
+            plugin.fetch_billing('fake-key', 'credits', 6)
 
     def test_metadata_is_in_scanned_header(self):
         header = PLUGIN_PATH.read_text().splitlines()[:80]

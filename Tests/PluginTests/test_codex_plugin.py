@@ -220,15 +220,15 @@ class TestResetCreditsDeadline(unittest.TestCase):
             spec = importlib.util.spec_from_file_location("codex_probe", path)
             plugin = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(plugin)
-            def urlopen(request, timeout):
-                if request.full_url == plugin.ENDPOINT:
-                    return io.BytesIO(json.dumps({"rate_limit": {"primary_window": {"used_percent": 10}}}).encode())
+            def fetch_json_stub(url, headers=None, timeout=10.0):
+                if url == plugin.ENDPOINT:
+                    return {"rate_limit": {"primary_window": {"used_percent": 10}}}
                 time.sleep(5)
                 raise TimeoutError("simulated slow response")
             with patch.object(sys, "argv", ["codex", "--usageboard-param", "STAT_PERIOD=none"]), \
                  patch.object(plugin, "load_auth", return_value={"access_token": "t", "account_id": "a"}), \
                  patch.object(plugin, "CREDITS_TIMEOUT_SECONDS", 0.1), \
-                 patch.object(plugin.urllib.request, "urlopen", side_effect=urlopen):
+                 patch.object(plugin, "fetch_json", side_effect=fetch_json_stub):
                 sys.exit(plugin.main())
         ''')
         completed = subprocess.run(

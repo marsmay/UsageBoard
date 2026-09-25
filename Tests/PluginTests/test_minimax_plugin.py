@@ -203,6 +203,12 @@ class TestBaseRespHandling(unittest.TestCase):
         output = self._run_main({"base_resp": "oops", **VALID_REMAINS})
         self.assertIn("error", output)
 
+    def test_null_model_name_falls_back_to_unknown(self):
+        models = [{"model_name": None, "current_interval_remaining_percent": 50}]
+        items = self.plugin.build_items({"model_remains": models}, "zh-Hans", self.plugin.make_translator({}))
+        self.assertIn("unknown", items[0]["name"])
+        self.assertIn("unknown", items[0]["id"])
+
 
 if __name__ == "__main__":
     unittest.main()

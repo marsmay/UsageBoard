@@ -26,12 +26,10 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import sys
 import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
@@ -40,6 +38,7 @@ from _common import (  # noqa: E402
     app_language,
     color_for,
     failure,
+    fetch_json,
     handle_http_error,
     handle_url_error,
     make_translator,
@@ -58,22 +57,15 @@ TRANSLATE = make_translator({
 })
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # Billing endpoints are fixed; never forward API credentials on redirects.
-        return None
-
-
 def fetch_billing(api_key: str, resource: str, timeout: float) -> dict[str, Any]:
-    request = urllib.request.Request(BASE_URL + resource, headers={
+    # fetch_json 内置不跟随重定向，凭证不会转发到其他主机。
+    payload = fetch_json(BASE_URL + resource, headers={
         "Authorization": f"Bearer {api_key}",
         "x-api-key": api_key,
         "Accept": "application/json",
         "User-Agent": "UsageBoard",
-    })
-    with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
-        payload = json.loads(response.read())
-    if not isinstance(payload, dict) or payload.get("success") is False:
+    }, timeout=timeout)
+    if not isinstance(payload, dict):
         raise ValueError("Invalid billing response")
     return payload
 

@@ -126,7 +126,7 @@ def build_items(payload: dict[str, Any], language: str, translate: Any) -> list[
         if not isinstance(model, dict):
             continue
 
-        raw_name = str(model.get("model_name", "unknown"))
+        raw_name = str(model.get("model_name") or "unknown")
         name = translate(language, f"model_{raw_name}") if raw_name in KNOWN_MODELS else raw_name
         slug = raw_name.replace(" ", "-").replace("/", "-").lower()
 

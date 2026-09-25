@@ -10,6 +10,7 @@ import ssl
 import socket
 import sys
 import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
@@ -152,6 +153,27 @@ def color_for_pct(pct: float) -> str:
 
 # ─── HTTP error handling ────────────────────────────────────────────────────────
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never forward credentials (Authorization etc.) to redirect targets.
+        return None
+
+
+def fetch_json(url: str, headers: dict[str, str] | None = None, timeout: float = 10.0) -> Any:
+    """GET a JSON document without following redirects.
+
+    urllib's default redirect handler forwards all request headers — including
+    Authorization — to the redirect target even across hosts. Billing/usage
+    endpoints are fixed, so refuse redirects instead of leaking credentials.
+    Raises HTTPError/URLError/TimeoutError/json/Unicode decode errors for the
+    caller's existing except-cascade to classify.
+    """
+    request = urllib.request.Request(url, headers=headers or {})
+    opener = urllib.request.build_opener(_NoRedirect)
+    with opener.open(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def handle_http_error(error: urllib.error.HTTPError, translate: Any, language: str) -> int:
     if error.code == 401:
         return failure(translate(language, "http_401", code=error.code))
@@ -180,6 +202,23 @@ def handle_url_error(error: urllib.error.URLError, translate: Any, language: str
 
 
 # ─── Disposable chart caches ──────────────────────────────────────────────────
+
+def mtime_at_least(path: str, cutoff_ts: float) -> bool:
+    """True if the file's mtime is at/after cutoff; missing files count as not matching.
+
+    Local session files can be rotated/deleted (e.g. by the CLI that owns them)
+    between glob and stat, so stat failures must skip the file instead of failing.
+    """
+    try:
+        return os.path.getmtime(path) >= cutoff_ts
+    except OSError:
+        return False
+
+
+def filter_by_mtime(files: list[str], cutoff_ts: float) -> list[str]:
+    """Keep only files modified at/after cutoff, skipping files that vanish mid-scan."""
+    return [path for path in files if mtime_at_least(path, cutoff_ts)]
+
 
 def load_json_cache(path: str, version: int) -> dict[str, Any] | None:
     try:

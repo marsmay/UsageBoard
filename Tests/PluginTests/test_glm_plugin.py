@@ -270,5 +270,27 @@ class TestChartCache(unittest.TestCase):
         self.assertEqual(daily[plugin._format_date(today)], {"glm-4.5": 3})
 
 
+class TestTotalFallbackLabel(unittest.TestCase):
+    def test_fallback_series_uses_localized_total_label(self):
+        payload = {"data": {"x_time": ["2026-09-25"], "tokensUsage": [42]}}
+        for language, label in (("zh-Hans", "总计"), ("en", "Total")):
+            with self.subTest(language=language):
+                bucket_values = {"2026-09-25": {}}
+                plugin.apply_aligned_model_series(payload, bucket_values, "day", language)
+                self.assertEqual(bucket_values["2026-09-25"].get(label), 42)
+
+    def test_model_series_wins_over_total_fallback(self):
+        payload = {
+            "data": {
+                "x_time": ["2026-09-25"],
+                "modelDataList": [{"model": "glm-4.5", "tokensUsage": [7]}],
+                "tokensUsage": [42],
+            }
+        }
+        bucket_values = {"2026-09-25": {}}
+        plugin.apply_aligned_model_series(payload, bucket_values, "day", "zh-Hans")
+        self.assertEqual(bucket_values["2026-09-25"], {"glm-4.5": 7})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -57,23 +57,10 @@ struct TokenUsageChartView: View {
     }
 
     private var modelSummaries: [TokenModelSummary] {
-        var totals: [String: Double] = [:]
-        for bucket in chart.buckets {
-            for segment in bucket.segments {
-                totals[segment.model, default: 0] += max(segment.tokens, 0)
-            }
-        }
-        return totals
-            .filter { $0.key != "总计" }
-            .sorted(by: { lhs, rhs in
-                if lhs.value == rhs.value {
-                    return lhs.key < rhs.key
-                }
-                return lhs.value > rhs.value
-            })
+        TokenChartModel.aggregatedModels(in: chart.buckets)
             .enumerated()
             .map { index, element in
-                TokenModelSummary(name: element.key, total: element.value, color: modelColor(at: index))
+                TokenModelSummary(name: element.name, total: element.total, color: modelColor(at: index))
             }
     }
 
@@ -305,6 +292,28 @@ struct TokenUsageChartView: View {
         let hue = Double((index - palette.count) % 24) / 24.0
         let brightness = 0.62 + Double((index / 24) % 3) * 0.12
         return Color(hue: hue, saturation: 0.72, brightness: min(brightness, 0.86))
+    }
+}
+
+enum TokenChartModel {
+    /// glm 等插件的回退序列在插件侧以本地化总量名（总计/Total）命名，
+    /// 会与总量摘要重复显示，聚合模型分项时排除。
+    static let totalFallbackLabels: Set<String> = ["总计", "Total"]
+
+    /// Aggregate per-model token totals across buckets, excluding fallback total series.
+    static func aggregatedModels(in buckets: [PluginChartBucket]) -> [(name: String, total: Double)] {
+        var totals: [String: Double] = [:]
+        for bucket in buckets {
+            for segment in bucket.segments {
+                totals[segment.model, default: 0] += max(segment.tokens, 0)
+            }
+        }
+        return totals
+            .filter { !totalFallbackLabels.contains($0.key) }
+            .sorted {
+                $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value
+            }
+            .map { (name: $0.key, total: $0.value) }
     }
 }
 

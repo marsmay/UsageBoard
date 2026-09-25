@@ -106,7 +106,8 @@ def window_period(minutes: float, language: str) -> str:
 def used_total(detail: dict[str, Any]) -> tuple[float, float]:
     """Prefer an explicit `used` field; fall back to limit - remaining."""
     total = numeric(detail.get("limit"))
-    if "used" in detail:
+    # 服务端显式 "used": null 时不遮蔽回退计算（numeric(None) 会得 0）。
+    if detail.get("used") is not None:
         return numeric(detail.get("used")), total
     return max(total - numeric(detail.get("remaining")), 0), total
 

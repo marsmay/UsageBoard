@@ -72,13 +72,14 @@ from _common import (  # noqa: E402
     app_language,
     color_for_pct,
     failure,
+    fetch_json,
     handle_http_error,
     handle_url_error,
     make_translator,
+    mtime_at_least,
     normalize_model_name,
     parse_usageboard_params,
     success,
-    utc_now_iso,
 )
 
 
@@ -130,21 +131,19 @@ def extract_auth_credentials(auth: dict[str, Any]) -> tuple[str | None, str | No
 
 
 def fetch_usage(access_token: str, account_id: str) -> dict[str, Any]:
-    headers = {
+    # fetch_json 不跟随重定向：端点固定在 chatgpt.com，凭证不得随 302 转发到其他主机。
+    return fetch_json(ENDPOINT, headers={
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
         "ChatGPT-Account-Id": account_id,
         "Origin": "https://chatgpt.com",
         "Referer": "https://chatgpt.com/",
         "User-Agent": "Mozilla/5.0",
-    }
-    request = urllib.request.Request(ENDPOINT, headers=headers)
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
+    }, timeout=15)
 
 
 def fetch_reset_credits(access_token: str, account_id: str, timeout: float = CREDITS_TIMEOUT_SECONDS) -> dict[str, Any]:
-    headers = {
+    return fetch_json(CREDITS_ENDPOINT, headers={
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
         "ChatGPT-Account-Id": account_id,
@@ -153,10 +152,7 @@ def fetch_reset_credits(access_token: str, account_id: str, timeout: float = CRE
         "Origin": "https://chatgpt.com",
         "Referer": "https://chatgpt.com/",
         "User-Agent": "Mozilla/5.0",
-    }
-    request = urllib.request.Request(CREDITS_ENDPOINT, headers=headers)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    }, timeout=timeout)
 
 
 def best_effort_reset_credits(access_token: str, account_id: str, deadline: float) -> list[dict[str, Any]] | None:
@@ -430,12 +426,8 @@ def collect_session_files(data_dir: str, start_date, end_date) -> list[str]:
         if file_date and start_str <= file_date <= end_str:
             result.append(f)
             continue
-        if start_mtime is not None:
-            try:
-                if os.path.getmtime(f) >= start_mtime:
-                    result.append(f)
-            except OSError:
-                pass
+        if start_mtime is not None and mtime_at_least(f, start_mtime):
+            result.append(f)
     return result
 
 

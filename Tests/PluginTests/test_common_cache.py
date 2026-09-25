@@ -6,7 +6,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Resources/BundledPlugins"))
-from _common import load_json_cache, normalize_model_name, numeric, save_json_cache
+import _common
+from _common import (
+    fetch_json,
+    filter_by_mtime,
+    load_json_cache,
+    normalize_model_name,
+    numeric,
+    save_json_cache,
+)
 
 
 class TestCommonCache(unittest.TestCase):
@@ -53,3 +61,76 @@ class TestNormalizeModelName(unittest.TestCase):
     def test_unusable_values_return_none(self):
         for value in [None, "", "   ", "deepseek/", "(high)", 123, {"model": "gpt-5"}]:
             self.assertIsNone(normalize_model_name(value))
+
+
+class TestFilterByMtime(unittest.TestCase):
+    def test_keeps_recent_files_and_skips_vanished_ones(self):
+        with tempfile.TemporaryDirectory() as directory:
+            recent = Path(directory) / "recent.jsonl"
+            old = Path(directory) / "old.jsonl"
+            recent.write_text("{}")
+            old.write_text("{}")
+            import os
+            cutoff = recent.stat().st_mtime - 1
+            import time
+            os.utime(old, (cutoff - 100, cutoff - 100))
+            # stat 抛 FileNotFoundError 的文件（glob 后被删除）必须跳过而非抛异常。
+            vanished = str(Path(directory) / "vanished.jsonl")
+            files = [str(recent), vanished, str(old)]
+            self.assertEqual(filter_by_mtime(files, cutoff), [str(recent)])
+
+    def test_missing_file_counts_as_not_matching(self):
+        self.assertFalse(_common.mtime_at_least("/nonexistent/should-not-raise", 0))
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class TestFetchJson(unittest.TestCase):
+    def test_no_redirect_handler_refuses_redirects(self):
+        # redirect_request 返回 None 时 urllib 将 30x 作为 HTTPError 抛出，凭证不会转发。
+        handler = _common._NoRedirect()
+        self.assertIsNone(
+            handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/steal")
+        )
+
+    def test_fetch_json_returns_decoded_payload_and_passes_headers(self):
+        captured = {}
+
+        class FakeOpener:
+            def open(self, request, timeout):
+                captured["url"] = request.full_url
+                captured["auth"] = request.get_header("Authorization")
+                captured["timeout"] = timeout
+                return _FakeResponse('{"ok": true}'.encode("utf-8"))
+
+        with patch.object(_common.urllib.request, "build_opener", return_value=FakeOpener()):
+            payload = fetch_json(
+                "https://api.example.com/v1/usage",
+                headers={"Authorization": "Bearer token"},
+                timeout=6,
+            )
+        self.assertEqual(payload, {"ok": True})
+        self.assertEqual(captured["url"], "https://api.example.com/v1/usage")
+        self.assertEqual(captured["auth"], "Bearer token")
+        self.assertEqual(captured["timeout"], 6)
+
+    def test_fetch_json_propagates_decode_errors(self):
+        class FakeOpener:
+            def open(self, request, timeout):
+                return _FakeResponse(b"\xff\xfe not utf-8")
+
+        with patch.object(_common.urllib.request, "build_opener", return_value=FakeOpener()):
+            with self.assertRaises(UnicodeDecodeError):
+                fetch_json("https://api.example.com/v1/usage")

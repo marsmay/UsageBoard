@@ -58,6 +58,23 @@ class TestPlanAndStatsNone(unittest.TestCase):
 
         self.assertEqual(output["items"], [])
         self.assertIn("chart", output)
+
+    def test_empty_data_dir_param_falls_back_to_default(self):
+        # 空 DATA_DIR 不得退化为进程 CWD，应与缺省一样解析到 ~/.claude。
+        _, cache_mock = self._run_main(
+            [("PLAN", "none"), ("STAT_PERIOD", "7d"), ("DATA_DIR", "")],
+            cache_return={},
+        )
+        expected = plugin.os.path.realpath(plugin.os.path.expanduser("~/.claude"))
+        self.assertEqual(cache_mock.call_args.args[0], expected)
+
+    def test_whitespace_data_dir_param_falls_back_to_default(self):
+        _, cache_mock = self._run_main(
+            [("PLAN", "none"), ("STAT_PERIOD", "7d"), ("DATA_DIR", "  ")],
+            cache_return={},
+        )
+        expected = plugin.os.path.realpath(plugin.os.path.expanduser("~/.claude"))
+        self.assertEqual(cache_mock.call_args.args[0], expected)
         cache_mock.assert_called_once()
 
 
@@ -270,6 +287,23 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
         }
         with open(path, "a") as f:
             f.write(json.dumps(record) + "\n")
+
+    def test_vanished_files_are_skipped_during_incremental_scan(self):
+        # glob 与 getmtime 之间被 Claude Code 轮转删除的文件必须跳过，不得让整个插件失败。
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = os.path.join(tmp, "projects", "p1")
+            os.makedirs(projects)
+            jsonl = os.path.join(projects, "session.jsonl")
+            now = datetime.now().astimezone()
+            self._write_jsonl(jsonl, now.isoformat(), "claude-sonnet", 80)
+            plugin.maintain_cache(tmp)  # 生成缓存，使下一次走增量路径
+
+            original = plugin.all_jsonl_files
+            vanished = os.path.join(tmp, "projects", "p1", "rotated-away.jsonl")
+            with patch.object(plugin, "all_jsonl_files", return_value=[vanished, jsonl]):
+                result = plugin.maintain_cache(tmp)  # 不得抛 FileNotFoundError
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            self.assertEqual(result.get(today_str, {}).get("claude-sonnet", {}).get("output", 0), 80)
 
     def test_today_is_rescanned_when_gap_days_is_zero(self):
         with tempfile.TemporaryDirectory() as tmp:

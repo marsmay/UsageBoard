@@ -84,6 +84,7 @@ TRANSLATIONS = {
     "no_stats_data":   {"zh-Hans": "暂无可用统计数据", "en": "No stats data available"},
     "no_quota_items":  {"zh-Hans": "未获取到配额数据", "en": "No quota data found."},
     "stats_query_failed": {"zh-Hans": "统计数据查询失败", "en": "Failed to query stats data"},
+    "total":           {"zh-Hans": "总计", "en": "Total"},
 }
 
 translate = make_translator(TRANSLATIONS)
@@ -357,7 +358,7 @@ def build_chart(payload: dict[str, Any], period: str, buckets: list[datetime], b
         bucket_id(bucket, bucket_unit): {} for bucket in buckets
     }
 
-    apply_aligned_model_series(payload, bucket_values, bucket_unit)
+    apply_aligned_model_series(payload, bucket_values, bucket_unit, language)
 
     for record, inherited_model in iter_records(payload):
         model = extract_model(record)
@@ -541,6 +542,7 @@ def apply_aligned_model_series(
     payload: dict[str, Any],
     bucket_values: dict[str, dict[str, float]],
     bucket_unit: str,
+    language: str,
 ) -> None:
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
@@ -563,7 +565,7 @@ def apply_aligned_model_series(
 
     total_values = data.get("tokensUsage")
     if isinstance(total_values, list) and not any(bucket_values[key] for key in bucket_values):
-        apply_aligned_values(times, total_values, "总计", bucket_values, bucket_unit)
+        apply_aligned_values(times, total_values, translate(language, "total"), bucket_values, bucket_unit)
 
 
 def apply_aligned_values(

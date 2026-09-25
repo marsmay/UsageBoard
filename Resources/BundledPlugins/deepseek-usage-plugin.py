@@ -89,10 +89,9 @@ def fetch_balance(api_key: str) -> dict[str, Any]:
         },
     )
     with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 200:
-            raise ValueError(f"Unexpected HTTP {response.status}")
-        body = response.read()
-        return json.loads(body)
+        # 4xx/5xx 由 urlopen 抛 HTTPError；此处无需再检查 status，
+        # 2xx 中非 200 的罕见响应按正常 JSON 解析处理。
+        return json.loads(response.read())
 
 
 def build_items(data: dict[str, Any], language: str, limit_amount: float, translate: Any) -> list[dict[str, Any]]:

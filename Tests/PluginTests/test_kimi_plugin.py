@@ -170,6 +170,16 @@ class TestBuildItems(unittest.TestCase):
         items = plugin.build_items(payload, "zh-Hans", translate())
         self.assertEqual(items[0]["used"], 70)
 
+    def test_null_used_does_not_mask_remaining_fallback(self):
+        # 服务端显式 "used": null 不得按 0 处理，需继续走 limit - remaining 回退。
+        payload = {
+            "limits": [
+                {"window": {"duration": 300}, "detail": {"limit": "100", "used": None, "remaining": "40"}}
+            ]
+        }
+        items = plugin.build_items(payload, "zh-Hans", translate())
+        self.assertEqual(items[0]["used"], 60)
+
     def test_normalizes_window_timeunit_hour(self):
         payload = {
             "limits": [

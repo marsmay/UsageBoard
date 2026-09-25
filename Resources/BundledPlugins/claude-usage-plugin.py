@@ -78,11 +78,11 @@ from _common import (  # noqa: E402
     app_language as _app_language,
     color_for_pct,
     failure,
+    filter_by_mtime,
     make_translator,
     normalize_model_name,
     parse_usageboard_params,
     success,
-    utc_now_iso,
 )
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -228,12 +228,6 @@ def all_jsonl_files(data_dir):
     expanded = os.path.expanduser(data_dir)
     return glob.glob(os.path.join(expanded, "projects", "**", "*.jsonl"), recursive=True)
 
-def recent_jsonl_files(data_dir):
-    yesterday_midnight = (
-        datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-    ).timestamp()
-    return [f for f in all_jsonl_files(data_dir) if os.path.getmtime(f) >= yesterday_midnight]
-
 def parse_records(files, start_dt, end_dt):
     records_by_id = {}
     for filepath in files:
@@ -360,7 +354,8 @@ def maintain_cache(data_dir):
     scan_start = max(cutoff, last_date)
     scan_start_utc = datetime(scan_start.year, scan_start.month, scan_start.day, tzinfo=timezone.utc) - timedelta(hours=14)
     cutoff_ts = scan_start_utc.timestamp()
-    recent_files = [f for f in all_jsonl_files(data_dir) if os.path.getmtime(f) >= cutoff_ts]
+    # 会话文件可能在 glob 与 stat 之间被 Claude Code 轮转删除，stat 失败跳过该文件。
+    recent_files = filter_by_mtime(all_jsonl_files(data_dir), cutoff_ts)
     records = parse_records(recent_files, scan_start_utc, now)
     new_days = group_by_local_date(records)
 
@@ -421,7 +416,8 @@ def main():
     params = parse_usageboard_params(sys.argv[1:])
     lang = _app_language(params)
     translate = _translate(lang)
-    data_dir = os.path.realpath(os.path.expanduser(params.get("DATA_DIR", "~/.claude")))
+    # 空 DATA_DIR 不得退化为进程 CWD：显式空串与缺省一样回退 ~/.claude。
+    data_dir = os.path.realpath(os.path.expanduser((params.get("DATA_DIR") or "").strip() or "~/.claude"))
     plan = params.get("PLAN", "pro").lower()
     stat_period = params.get("STAT_PERIOD", "7d").lower()
     stats_enabled = stat_period != "none"
