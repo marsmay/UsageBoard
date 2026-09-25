@@ -84,7 +84,7 @@ xattr -cr /Applications/UsageBoard.app
 - **Claude**：通过 OAuth API 查询订阅用量；`PLAN` 选 `none` 时跳过 API 仅返回本地 JSONL 统计，与统计周期均选 `none` 时卡片显示"暂无用量数据"；本地 token 统计按 input、output、cache creation、cache read 实际消耗求和；`CLAUDE_ONLY` 过滤第三方模型；`DATA_DIR` 指定数据目录（默认 `~/.claude`）；`STAT_PERIOD` 同上。
 - **Codex**：`AUTH_FILE`（默认 `~/.codex/auth.json`）与 `DATA_DIR`（默认 `~/.codex`）相互独立，修改统计目录不影响认证路径；列出账号当前可用的额度重置卡，查询失败不影响用量显示；`STAT_PERIOD` 同上。
 - **DeepSeek**：`LIMIT` 设置余额展示上限，进度条按余额占上限比例着色。
-- **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Andante / Moderato / Allegretto / Allegro（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Andante）；有效手动配置优先于接口会员等级，无法确认时省略徽标；当前 API 响应可能不再包含会员等级，建议手动选择。
+- **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Go / Plus / Pro / Max（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Go），接口不再提供会员等级，未选择或值无效时省略徽标。
 
 实现细节：GLM 与 Codex 的图表缓存（版本 2）升级旧缓存时一次性重建近 30 天数据，随后恢复增量更新；Claude、Codex 与智谱统计缓存原子写入，失败保留旧缓存；Codex 按行解码 UTF-8，损坏行整行跳过；Claude 空套餐名回退配置值再到 pro；Kimi 省略时区不明的重置时间；MiniMax 对显式 null 或非对象 `base_resp` 返回解析失败，缺失字段保持兼容。
 

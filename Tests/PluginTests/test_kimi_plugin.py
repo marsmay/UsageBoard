@@ -94,7 +94,7 @@ class TestParseResetTime(unittest.TestCase):
             ],
             "usage": {"limit": "100", "remaining": "40", "resetTime": "2026-07-24T14:16:52Z"},
         }
-        items, _ = plugin.build_items(payload, "zh-Hans", translate())
+        items = plugin.build_items(payload, "zh-Hans", translate())
         window = next(item for item in items if item["id"] == "kimi-window-300")
         weekly = next(item for item in items if item["id"] == "kimi-weekly")
         self.assertIsNone(window["resetAt"])
@@ -130,8 +130,7 @@ class TestBuildItems(unittest.TestCase):
     """build_items parses the 5-hour window, weekly quota, and total quota."""
 
     def test_parses_window_and_weekly(self):
-        items, badge = plugin.build_items(FAKE_USAGE, "zh-Hans", translate())
-        self.assertEqual(badge, "Allegretto")
+        items = plugin.build_items(FAKE_USAGE, "zh-Hans", translate())
         self.assertEqual(len(items), 2)
 
         window = next(item for item in items if item["id"] == "kimi-window-300")
@@ -157,7 +156,7 @@ class TestBuildItems(unittest.TestCase):
                 {"window": {"duration": 300}, "detail": {"limit": "100", "used": "5", "remaining": "90"}}
             ]
         }
-        items, _ = plugin.build_items(payload, "zh-Hans", translate())
+        items = plugin.build_items(payload, "zh-Hans", translate())
         window = items[0]
         # explicit used=5 wins over 100-90=10
         self.assertEqual(window["used"], 5)
@@ -168,7 +167,7 @@ class TestBuildItems(unittest.TestCase):
                 {"window": {"duration": 300}, "detail": {"limit": "100", "remaining": "30"}}
             ]
         }
-        items, _ = plugin.build_items(payload, "zh-Hans", translate())
+        items = plugin.build_items(payload, "zh-Hans", translate())
         self.assertEqual(items[0]["used"], 70)
 
     def test_normalizes_window_timeunit_hour(self):
@@ -178,78 +177,51 @@ class TestBuildItems(unittest.TestCase):
                  "detail": {"limit": "100", "used": "1", "remaining": "99"}}
             ]
         }
-        items, _ = plugin.build_items(payload, "zh-Hans", translate())
+        items = plugin.build_items(payload, "zh-Hans", translate())
         # 5 hours normalized to 300 minutes → same id/label as the 300-minute window
         self.assertEqual(items[0]["id"], "kimi-window-300")
         self.assertIn("5 小时", items[0]["name"])
 
     def test_english_window_label(self):
-        items, _ = plugin.build_items(FAKE_USAGE, "en", translate())
+        items = plugin.build_items(FAKE_USAGE, "en", translate())
         window = next(item for item in items if item["id"] == "kimi-window-300")
         self.assertIn("5 hours", window["name"])
 
     def test_skips_zero_limit_window(self):
         payload = {"limits": [{"window": {"duration": 300}, "detail": {"limit": 0, "remaining": 0}}]}
-        items, badge = plugin.build_items(payload, "zh-Hans", translate())
+        items = plugin.build_items(payload, "zh-Hans", translate())
         self.assertEqual(items, [])
-        self.assertIsNone(badge)
-
-
-class TestExtractPlan(unittest.TestCase):
-    """Badge is mapped from user.membership.level using Kimi's goods configuration."""
-
-    def test_maps_membership_levels_to_product_titles(self):
-        cases = {
-            "LEVEL_FREE": "Adagio",
-            "LEVEL_TRIAL": "Andante",
-            "LEVEL_BASIC": "Moderato",
-            "LEVEL_INTERMEDIATE": "Allegretto",
-            "LEVEL_ADVANCED": "Allegro",
-        }
-        for level, plan in cases.items():
-            payload = {"user": {"membership": {"level": level}}}
-            self.assertEqual(plugin.extract_plan(payload), plan)
-
-    def test_returns_none_for_unknown_membership_level(self):
-        payload = {"user": {"membership": {"level": "LEVEL_UNKNOWN"}}}
-        self.assertIsNone(plugin.extract_plan(payload))
-
-    def test_does_not_fall_back_to_unrelated_top_level_fields(self):
-        self.assertIsNone(plugin.extract_plan({"plan": "Allegro", "level": "LEVEL_ADVANCED"}))
-
-    def test_returns_none_when_absent(self):
-        self.assertIsNone(plugin.extract_plan({}))
 
 
 class TestMainFlow(unittest.TestCase):
     """main() with patched fetch_usage produces success payload and resolves badge."""
 
     def test_success_output_has_schema_version_and_badge(self):
-        output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=FAKE_USAGE)
+        output = run_main(["--usageboard-param", "API_KEY=fake",
+                           "--usageboard-param", "PLAN=Pro"], fake_response=FAKE_USAGE)
         self.assertIn("schemaVersion", output)
-        self.assertEqual(output["badge"], "Allegretto")
+        self.assertEqual(output["badge"], "Pro")
         self.assertEqual(output["badgeColor"], "blue")
         self.assertEqual(len(output["items"]), 2)
 
-    def test_configured_plans_override_api_badge_with_existing_colors(self):
-        for plan, color in [("Andante", "gray"), ("Moderato", "indigo"),
-                            ("Allegretto", "blue"), ("Allegro", "orange")]:
-            for has_membership in [True, False]:
-                with self.subTest(plan=plan, has_membership=has_membership):
-                    payload = dict(FAKE_USAGE)
-                    if not has_membership:
-                        del payload["user"]
-                    output = run_main(["--usageboard-param", "API_KEY=fake",
-                                       "--usageboard-param", f"PLAN={plan}"], fake_response=payload)
-                    self.assertEqual(output["badge"], plan)
-                    self.assertEqual(output["badgeColor"], color)
-                    self.assertEqual(len(output["items"]), 2)
+    def test_configured_plans_set_badge_with_existing_colors(self):
+        # FAKE_USAGE 携带旧版 user.membership 字段，验证响应中的会员等级被完全忽略。
+        for plan, color in [("Go", "gray"), ("Plus", "indigo"),
+                            ("Pro", "blue"), ("Max", "orange")]:
+            with self.subTest(plan=plan):
+                output = run_main(["--usageboard-param", "API_KEY=fake",
+                                   "--usageboard-param", f"PLAN={plan}"], fake_response=FAKE_USAGE)
+                self.assertEqual(output["badge"], plan)
+                self.assertEqual(output["badgeColor"], color)
+                self.assertEqual(len(output["items"]), 2)
 
-    def test_invalid_configured_plan_falls_back_to_api(self):
-        for plan in ["", "unknown", "Adagio"]:
+    def test_invalid_configured_plan_omits_badge(self):
+        # 旧版套餐名（Andante/Adagio 等）与未知值均视为无效，直接省略徽标。
+        for plan in ["", "unknown", "Andante", "Adagio"]:
             output = run_main(["--usageboard-param", "API_KEY=fake",
                                "--usageboard-param", f"PLAN={plan}"], fake_response=FAKE_USAGE)
-            self.assertEqual(output["badge"], "Allegretto")
+            self.assertNotIn("badge", output)
+            self.assertNotIn("badgeColor", output)
 
     def test_plan_metadata_exposes_four_choices_in_scanned_header(self):
         lines = PLUGIN_PATH.read_text().splitlines()[:80]
@@ -259,15 +231,15 @@ class TestMainFlow(unittest.TestCase):
         plan = metadata["parameters"][0]
         self.assertEqual(plan["name"], "PLAN")
         self.assertEqual(plan["type"], "choice")
-        self.assertEqual(plan["defaultValue"], "Andante")
+        self.assertEqual(plan["defaultValue"], "Go")
         self.assertEqual([o["value"] for o in plan["options"]],
-                         ["Andante", "Moderato", "Allegretto", "Allegro"])
+                         ["Go", "Plus", "Pro", "Max"])
         self.assertEqual(metadata["parameters"][1]["name"], "API_KEY")
 
-    def test_unknown_membership_level_omits_badge(self):
-        payload = dict(FAKE_USAGE)
-        payload["user"] = {"membership": {"level": "LEVEL_UNKNOWN"}}
-        output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=payload)
+    def test_response_membership_level_is_ignored(self):
+        # 旧版响应即使携带有效 user.membership.level 也不再产生徽标，套餐仅来自手动配置。
+        output = run_main(["--usageboard-param", "API_KEY=fake"], fake_response=FAKE_USAGE)
+        self.assertEqual(len(output["items"]), 2)
         self.assertNotIn("badge", output)
         self.assertNotIn("badgeColor", output)
 

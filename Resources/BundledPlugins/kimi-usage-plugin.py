@@ -17,12 +17,12 @@
 #       "label@en": "Subscription Plan",
 #       "type": "choice",
 #       "required": false,
-#       "defaultValue": "Andante",
+#       "defaultValue": "Go",
 #       "options": [
-#         {"label": "Andante", "value": "Andante"},
-#         {"label": "Moderato", "value": "Moderato"},
-#         {"label": "Allegretto", "value": "Allegretto"},
-#         {"label": "Allegro", "value": "Allegro"}
+#         {"label": "Go", "value": "Go"},
+#         {"label": "Plus", "value": "Plus"},
+#         {"label": "Pro", "value": "Pro"},
+#         {"label": "Max", "value": "Max"}
 #       ]
 #     },
 #     {
@@ -68,22 +68,12 @@ ENDPOINT = "https://api.kimi.com/coding/v1/usages"
 # Kimi Code 用量端点面向其 CLI 客户端，保留与 @moonshot-ai/kimi-code 一致的 UA 以兼容服务端校验。
 USER_AGENT = "kimi-code/0.27.0"
 
-# Kimi 商品配置中的会员等级 → 订阅计划。
-MEMBERSHIP_PLAN = {
-    "LEVEL_FREE": "Adagio",
-    "LEVEL_TRIAL": "Andante",
-    "LEVEL_BASIC": "Moderato",
-    "LEVEL_INTERMEDIATE": "Allegretto",
-    "LEVEL_ADVANCED": "Allegro",
-}
-
-# Kimi Code 订阅计划 → 徽标颜色。
+# Kimi Code 订阅计划 → 徽标颜色。用量 API 已不返回会员等级，套餐仅来自手动配置。
 PLAN_BADGE_COLOR = {
-    "Adagio": "gray",
-    "Andante": "gray",
-    "Moderato": "indigo",
-    "Allegretto": "blue",
-    "Allegro": "orange",
+    "Go": "gray",
+    "Plus": "indigo",
+    "Pro": "blue",
+    "Max": "orange",
 }
 
 TRANSLATIONS = {
@@ -148,21 +138,7 @@ def fetch_usage(api_key: str) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def extract_plan(payload: dict[str, Any]) -> str | None:
-    """Map the usage API membership level to its configured product title."""
-    user = payload.get("user")
-    if not isinstance(user, dict):
-        return None
-    membership = user.get("membership")
-    if not isinstance(membership, dict):
-        return None
-    level = membership.get("level")
-    if not isinstance(level, str):
-        return None
-    return MEMBERSHIP_PLAN.get(level)
-
-
-def build_items(payload: dict[str, Any], language: str, translate: Any) -> tuple[list[dict[str, Any]], str | None]:
+def build_items(payload: dict[str, Any], language: str, translate: Any) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
 
     # 5-hour rolling windows (shown first)
@@ -208,7 +184,7 @@ def build_items(payload: dict[str, Any], language: str, translate: Any) -> tuple
                 "color": color_for(used, total),
             })
 
-    return items, extract_plan(payload)
+    return items
 
 
 def main() -> int:
@@ -234,7 +210,7 @@ def main() -> int:
         return failure(translate(language, "network_error"))
 
     try:
-        items, auto_badge = build_items(payload, language, translate)
+        items = build_items(payload, language, translate)
     except Exception:
         return failure(translate(language, "usage_parse_failed"))
 
@@ -242,7 +218,7 @@ def main() -> int:
         return failure(translate(language, "no_quota_items"))
 
     configured_plan = params.get("PLAN", "").strip()
-    badge = configured_plan if configured_plan in ("Andante", "Moderato", "Allegretto", "Allegro") else auto_badge
+    badge = configured_plan if configured_plan in PLAN_BADGE_COLOR else None
     return success(items, badge=badge, badgeColor=PLAN_BADGE_COLOR.get(badge))
 
 
