@@ -1,6 +1,10 @@
 @preconcurrency import Foundation
 
 public enum UsageBoardJSON {
+    /// ISO8601DateFormatter 创建成本远高于单次解析，且实例非线程安全：
+    /// 锁保护的共享实例复用。图表/缓存解码包含大量日期字段，每个日期字符串都经过这里。
+    private static let formatters = LockedISO8601Formatters()
+
     public static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom(decodeISO8601Date)
@@ -18,21 +22,32 @@ public enum UsageBoardJSON {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
 
-        let fractionalFormatter = ISO8601DateFormatter()
-        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractionalFormatter.date(from: value) {
-            return date
+        guard let date = formatters.parse(value) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Expected date string to be ISO8601-formatted."
+            )
         }
+        return date
+    }
+}
 
+private final class LockedISO8601Formatters: @unchecked Sendable {
+    private let lock = NSLock()
+    private let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private let plain: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: value) {
-            return date
-        }
+        return formatter
+    }()
 
-        throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Expected date string to be ISO8601-formatted."
-        )
+    func parse(_ value: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return fractional.date(from: value) ?? plain.date(from: value)
     }
 }

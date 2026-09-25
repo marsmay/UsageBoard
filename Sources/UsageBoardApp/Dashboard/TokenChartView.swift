@@ -8,20 +8,27 @@ struct TokenUsageChartView: View {
     @State private var selectedSeries: String?
     @State private var chartHover: TokenChartHover?
     @State private var chartContentMinX: CGFloat?
+    // O(buckets×models) 的派生数据按 chart 缓存，避免 hover 移动等高频 body 求值反复重算。
+    @State private var cachedSeries: [TokenChartSeries] = []
+    @State private var cachedModelSummaries: [TokenModelSummary] = []
+    @State private var cachedTotalTokens: Double = 0
     private var strings: AppLocalization {
         .shared
     }
 
-    private var series: [TokenChartSeries] {
-        var output = [
-            TokenChartSeries(
-                name: strings.text(.totalTokenUsage),
-                tooltipName: strings.text(.chartTooltipTotal),
-                color: .blue,
-                values: chart.buckets.map(\.total)
-            )
-        ]
-        output.append(contentsOf: modelSummaries.map { summary in
+    private func rebuildDerivedData() {
+        cachedTotalTokens = chart.buckets.reduce(0) { $0 + $1.total }
+        cachedModelSummaries = TokenChartModel.aggregatedModels(in: chart.buckets)
+            .enumerated()
+            .map { index, element in
+                TokenModelSummary(name: element.name, total: element.total, color: modelColor(at: index))
+            }
+        cachedSeries = [TokenChartSeries(
+            name: strings.text(.totalTokenUsage),
+            tooltipName: strings.text(.chartTooltipTotal),
+            color: .blue,
+            values: chart.buckets.map(\.total)
+        )] + cachedModelSummaries.map { summary in
             TokenChartSeries(
                 name: strings.usageSuffix(for: summary.name),
                 tooltipName: summary.name,
@@ -30,8 +37,19 @@ struct TokenUsageChartView: View {
                     bucket.segments.first(where: { $0.model == summary.name })?.tokens ?? 0
                 }
             )
-        })
-        return output
+        }
+    }
+
+    private var series: [TokenChartSeries] {
+        cachedSeries
+    }
+
+    private var modelSummaries: [TokenModelSummary] {
+        cachedModelSummaries
+    }
+
+    private var totalTokens: Double {
+        cachedTotalTokens
     }
 
     private var visibleSeries: [TokenChartSeries] {
@@ -54,18 +72,6 @@ struct TokenUsageChartView: View {
             all: series,
             selectedSeriesName: selectedSeries
         )
-    }
-
-    private var modelSummaries: [TokenModelSummary] {
-        TokenChartModel.aggregatedModels(in: chart.buckets)
-            .enumerated()
-            .map { index, element in
-                TokenModelSummary(name: element.name, total: element.total, color: modelColor(at: index))
-            }
-    }
-
-    private var totalTokens: Double {
-        chart.buckets.reduce(0) { $0 + $1.total }
     }
 
     var body: some View {
@@ -175,6 +181,10 @@ struct TokenUsageChartView: View {
                 }
                 .coordinateSpace(name: "TokenChartViewport")
                 .frame(height: TokenChartLayout.height)
+                .onAppear(perform: rebuildDerivedData)
+                .onChange(of: chart) { _ in
+                    rebuildDerivedData()
+                }
                 .onChange(of: chartMode) { _ in
                     chartHover = nil
                 }

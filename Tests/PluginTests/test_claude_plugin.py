@@ -288,6 +288,25 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
         with open(path, "a") as f:
             f.write(json.dumps(record) + "\n")
 
+    def test_full_scan_prefilters_files_by_mtime(self):
+        # 冷启动全量路径同样按 mtime 预过滤；解析器内部的时间过滤仍是权威。
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = os.path.join(tmp, "projects", "p1")
+            os.makedirs(projects)
+            recent = os.path.join(projects, "recent.jsonl")
+            stale = os.path.join(projects, "stale.jsonl")
+            now = datetime.now().astimezone()
+            self._write_jsonl(recent, now.isoformat(), "claude-sonnet", 33)
+            # 旧 mtime 文件内即使有近期时间戳的记录也不得进入解析（预过滤语义）。
+            self._write_jsonl(stale, now.isoformat(), "claude-sonnet", 500)
+            import time as _time
+            old_ts = _time.time() - 40 * 86400
+            os.utime(stale, (old_ts, old_ts))
+
+            result = plugin.maintain_cache(tmp)  # 无缓存 → 全量路径
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            self.assertEqual(result.get(today_str, {}).get("claude-sonnet", {}).get("output", 0), 33)
+
     def test_vanished_files_are_skipped_during_incremental_scan(self):
         # glob 与 getmtime 之间被 Claude Code 轮转删除的文件必须跳过，不得让整个插件失败。
         with tempfile.TemporaryDirectory() as tmp:
