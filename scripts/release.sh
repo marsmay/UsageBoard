@@ -9,24 +9,13 @@ PLIST="$APP_BUNDLE/Contents/Info.plist"
 REMOTE_HOST="root@may"
 REMOTE_PATH="/data/web/usageboard"
 DOWNLOAD_BASE_URL="https://usageboard.may.ltd"
-UPDATE_CHECK_URL="${DOWNLOAD_BASE_URL}/version.json"
+UPDATE_CHECK_URL="${UB_UPDATE_CHECK_URL:-${DOWNLOAD_BASE_URL}/version.json}"
+
+# shellcheck source=scripts/_package_common.sh
+source "$(dirname "$0")/_package_common.sh"
 
 if [ ! -f "$PLIST" ]; then
-    mkdir -p "$(dirname "$PLIST")"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleDevelopmentRegion string zh_CN" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string UsageBoard" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string UsageBoard" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ltd.may.UsageBoard" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleInfoDictionaryVersion string 6.0" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleName string UsageBoard" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string APPL" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 0.1.0" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 1" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :LSApplicationCategoryType string 'public.app-category.productivity'" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :LSUIElement string true" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :NSHighResolutionCapable bool true" "$PLIST"
-    /usr/libexec/PlistBuddy -c "Add :NSPrincipalClass string NSApplication" "$PLIST"
+    ensure_info_plist
 fi
 
 # --- Version handling ---
@@ -38,9 +27,10 @@ else
     IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
     NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
 fi
+validate_version "$NEW_VERSION"
 
 echo "版本: $CURRENT_VERSION → $NEW_VERSION"
-# build 号规则与 InTime 一致：UTC %y%j%H%M（年+年积日+时+分），单调递增
+# build 号规则：UTC %y%j%H%M（年+年积日+时+分），单调递增
 APP_BUILD="${APP_BUILD:-$(TZ=UTC date +%y%j%H%M)}"
 
 # --- Release notes ---
@@ -64,25 +54,7 @@ swift build -c release
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD" "$PLIST"
 
-# --- Copy binary & plugins ---
-echo "打包 app..."
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources/Plugins"
-cp .build/release/UsageBoard "$APP_BUNDLE/Contents/MacOS/UsageBoard"
-rm -f "$APP_BUNDLE/Contents/Resources/Plugins/"*.py
-rm -rf "$APP_BUNDLE/Contents/Resources/Plugins/__pycache__"
-cp "$PROJECT_DIR/Resources/UsageBoard.icns" "$APP_BUNDLE/Contents/Resources/UsageBoard.icns"
-cp "$PROJECT_DIR/Resources/PluginAuthoringGuide.html" "$APP_BUNDLE/Contents/Resources/PluginAuthoringGuide.html"
-cp "$PROJECT_DIR/Resources/BundledPlugins/"*.py "$APP_BUNDLE/Contents/Resources/Plugins/"
-rm -rf "$APP_BUNDLE/Contents/Resources/icons"
-mkdir -p "$APP_BUNDLE/Contents/Resources/icons"
-cp -R "$PROJECT_DIR/Resources/icons/." "$APP_BUNDLE/Contents/Resources/icons/"
-
-# --- Inject update check URL into Info.plist ---
-/usr/libexec/PlistBuddy -c "Add :UBUpdateCheckURL string ${UPDATE_CHECK_URL}" "$PLIST" 2>/dev/null \
-    || /usr/libexec/PlistBuddy -c "Set :UBUpdateCheckURL ${UPDATE_CHECK_URL}" "$PLIST"
-
-codesign --force --deep --sign - "$APP_BUNDLE"
-codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE" 2>&1 | tail -1
+package_app_bundle
 
 # --- Zip ---
 ZIP_NAME="UsageBoard-${NEW_VERSION}.zip"

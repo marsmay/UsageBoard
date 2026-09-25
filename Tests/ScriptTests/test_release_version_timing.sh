@@ -31,6 +31,7 @@ make_project() {
         "$root/dist/UsageBoard.app/Contents/Resources" \
         "$root/Resources/BundledPlugins" "$root/Resources/icons/light"
     cp "$RELEASE_SH" "$root/scripts/release.sh"
+    cp "$REPO_ROOT/scripts/_package_common.sh" "$root/scripts/_package_common.sh"
 
     /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.2.3" \
         "$root/dist/UsageBoard.app/Contents/Info.plist" >/dev/null
