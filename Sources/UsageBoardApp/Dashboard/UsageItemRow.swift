@@ -8,18 +8,21 @@ struct UsageItemRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(item.name)
-                .font(.system(size: 12))
+                .font(UB.Font.label)
                 .foregroundStyle(UB.Text.supporting)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: 92, alignment: .leading)
+                // 固定宽度截断后，悬浮提示是查看完整名称的唯一途径。
+                .help(item.name)
 
             UsageProgressBar(value: item.progress, label: item.displayValue(), color: item.color)
                 .frame(height: 18)
                 .layoutPriority(1)
 
             Text(item.resetText(language: language))
-                .font(.system(size: 11))
+                .font(UB.Font.caption)
+                .help(item.resetText(language: language))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)

@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     // MARK: - Settings
 
-    func openSettings() {
+    @objc func openSettings() {
         // Close popover if open
         if let popover, popover.isShown {
             popover.performClose(nil)

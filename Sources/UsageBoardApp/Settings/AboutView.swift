@@ -45,7 +45,7 @@ struct AboutView: View {
                         UpdatePrompt.present(info: info, store: store)
                     }
                 }
-                .buttonStyle(CheckForUpdatesButtonStyle())
+                .buttonStyle(UBPrimaryCapsuleButtonStyle())
                 .disabled(store.isCheckingForUpdates || store.isUpdating)
                 .padding(.top, 22)
 
@@ -55,8 +55,9 @@ struct AboutView: View {
                     }
                     if let message = store.updateMessage {
                         Text(message)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .font(UB.Font.label)
+                            // 更新失败与设置页横幅、卡片错误保持一致的红色，其余状态用次级色。
+                            .foregroundStyle(store.updatePhase == .failed ? Color.red : Color.secondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
@@ -69,20 +70,5 @@ struct AboutView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct CheckForUpdatesButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(Color.blue.opacity(configuration.isPressed ? 0.8 : 1)))
-            .opacity(isEnabled ? 1 : 0.45)
-            .contentShape(Capsule())
     }
 }

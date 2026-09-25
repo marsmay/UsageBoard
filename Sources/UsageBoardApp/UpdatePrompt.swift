@@ -197,14 +197,14 @@ struct UpdatePromptView: View {
             HStack(spacing: 10) {
                 Spacer()
                 Button(strings.text(.updateLater), action: onLater)
-                    .buttonStyle(UpdatePromptSecondaryButtonStyle())
+                    .buttonStyle(UBSecondaryCapsuleButtonStyle())
                     .keyboardShortcut(.cancelAction)
                     .disabled(buttonsDisabled)
                 Button(primaryTitle) {
                     didStartUpdate = true
                     store.performUpdate(info: info)
                 }
-                .buttonStyle(UpdatePromptPrimaryButtonStyle())
+                .buttonStyle(UBPrimaryCapsuleButtonStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(buttonsDisabled)
                 .help(didStartUpdate && store.updatePhase == .failed ? (store.updateMessage ?? "") : "")
@@ -219,34 +219,3 @@ struct UpdatePromptView: View {
     }
 }
 
-// MARK: - Button Styles
-
-/// 深色填充胶囊（立即更新）。
-private struct UpdatePromptPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
-            .background(Capsule().fill(Color.primary.opacity(configuration.isPressed ? 0.75 : 1)))
-    }
-}
-
-/// 描边胶囊（稍后更新）。
-private struct UpdatePromptSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
-            .background(
-                Capsule()
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.1 : 0.04))
-            )
-            .overlay(
-                Capsule().stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            )
-    }
-}

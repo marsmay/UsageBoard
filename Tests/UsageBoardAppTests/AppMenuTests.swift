@@ -31,7 +31,7 @@ final class AppMenuTests: XCTestCase {
                 ))
                 // XCTest does not run NSApplication's event loop or establish a key window.
                 // Supply the field editor explicitly to exercise the real menu command.
-                let editMenu = try XCTUnwrap(app.mainMenu?.items.last?.submenu)
+                let editMenu = try XCTUnwrap(app.mainMenu?.items.dropFirst().first?.submenu)
                 let selectAll = try XCTUnwrap(editMenu.items.first { $0.keyEquivalent == "a" })
                 XCTAssertNil(selectAll.target, "Production commands must use the responder chain")
                 selectAll.target = editor
@@ -41,6 +41,25 @@ final class AppMenuTests: XCTestCase {
                                "Command-A must reach the focused field (secure: \(secure), language: \(language))")
             }
         }
+    }
+
+    func testMenuProvidesSettingsCommandAndWindowCommands() throws {
+        let app = NSApplication.shared
+        let originalMenu = app.mainMenu
+        defer { app.mainMenu = originalMenu }
+
+        app.mainMenu = AppMenu.make(strings: AppLocalization(language: .en))
+
+        let appMenu = try XCTUnwrap(app.mainMenu?.items.first?.submenu)
+        let settingsItem = try XCTUnwrap(appMenu.items.first { $0.keyEquivalent == "," })
+        XCTAssertEqual(settingsItem.title, "Settings…")
+        XCTAssertNil(settingsItem.target, "Settings command must use the responder chain")
+
+        let windowMenu = try XCTUnwrap(app.mainMenu?.items.first { $0.submenu?.title == "Window" }?.submenu)
+        let close = try XCTUnwrap(windowMenu.items.first { $0.keyEquivalent == "w" })
+        let minimize = try XCTUnwrap(windowMenu.items.first { $0.keyEquivalent == "m" })
+        XCTAssertNil(close.target)
+        XCTAssertNil(minimize.target)
     }
 
     private func descendants(_ view: NSView) -> [NSView] {

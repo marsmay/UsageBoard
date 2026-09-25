@@ -111,6 +111,10 @@ struct AppLocalization {
         case .reloadMetadata: return "Reload metadata"
         case .chooseScript: return "Choose script"
         case .removePlugin: return "Remove plugin"
+        case .settingsMenu: return "Settings…"
+        case .windowMenu: return "Window"
+        case .closeWindow: return "Close"
+        case .minimize: return "Minimize"
         case .confirmRemovePlugin: return "Remove this plugin?"
         case .removePluginMessage: return "This removes the plugin and its saved parameters. This cannot be undone."
         case .remove: return "Remove"
@@ -144,6 +148,7 @@ struct AppLocalization {
         case .scriptPathPlaceholder: return "Python script path"
         case .refreshInterval: return "Refresh"
         case .seconds: return "seconds"
+        case .refreshIntervalMinimum: return "min 5s"
         case .pluginParameters: return "Plugin Parameters"
         case .noParameterMetadata: return "No plugin parameter metadata found"
         case .noPluginsTitle: return "No Plugins"
@@ -195,6 +200,10 @@ struct AppLocalization {
         case .reloadMetadata: return "重新加载元数据"
         case .chooseScript: return "选择脚本"
         case .removePlugin: return "移除插件"
+        case .settingsMenu: return "设置…"
+        case .windowMenu: return "窗口"
+        case .closeWindow: return "关闭"
+        case .minimize: return "最小化"
         case .confirmRemovePlugin: return "移除该插件？"
         case .removePluginMessage: return "将移除该插件及其已保存的参数配置，此操作不可撤销。"
         case .remove: return "移除"
@@ -228,6 +237,7 @@ struct AppLocalization {
         case .scriptPathPlaceholder: return "Python 脚本路径"
         case .refreshInterval: return "刷新间隔"
         case .seconds: return "秒"
+        case .refreshIntervalMinimum: return "最低 5 秒"
         case .pluginParameters: return "插件参数"
         case .noParameterMetadata: return "未读取到插件参数元数据"
         case .noPluginsTitle: return "暂无插件"
@@ -278,6 +288,10 @@ struct AppLocalization {
         case reloadMetadata
         case chooseScript
         case removePlugin
+        case settingsMenu
+        case windowMenu
+        case closeWindow
+        case minimize
         case confirmRemovePlugin
         case removePluginMessage
         case remove
@@ -311,6 +325,7 @@ struct AppLocalization {
         case scriptPathPlaceholder
         case refreshInterval
         case seconds
+        case refreshIntervalMinimum
         case pluginParameters
         case noParameterMetadata
         case noPluginsTitle
