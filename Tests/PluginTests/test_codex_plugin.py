@@ -1,4 +1,4 @@
-"""Tests for codex-usage-plugin.py — run with: python3 -m pytest Tests/PluginTests/test_codex_plugin.py"""
+"""Tests for codex-usage-plugin.py — run with: python3 -m unittest discover -s Tests/PluginTests"""
 
 import importlib.util
 import json

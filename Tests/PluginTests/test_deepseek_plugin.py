@@ -1,4 +1,4 @@
-"""Tests for deepseek-usage-plugin.py — run with: python3 -m pytest Tests/PluginTests/test_deepseek_plugin.py"""
+"""Tests for deepseek-usage-plugin.py — run with: python3 -m unittest discover -s Tests/PluginTests"""
 
 import importlib.util
 import json

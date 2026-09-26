@@ -9,7 +9,7 @@ UsageBoard 是 macOS 菜单栏应用，通过外部插件聚合服务配额、�
 - 运行平台：macOS 13+；Python 插件通过可用的 `python3` 执行。
 - 构建：Swift Package Manager，最低 Swift tools version 为 6.3，Swift language mode 为 6。
 - App：SwiftUI + AppKit，`ObservableObject` / `@Published`，使用 `SMAppService` 管理开机启动。
-- 测试：XCTest（Core、App）和 pytest（Python 插件）。
+- 测试：XCTest（Core、App）和 unittest（Python 插件）。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -18,12 +18,14 @@ UsageBoard 是 macOS 菜单栏应用，通过外部插件聚合服务配额、�
 | `Sources/UsageBoardApp/UsageBoardStore.swift` | 主状态、配置写入、插件调度、刷新、更新与开机启动 |
 | `Sources/UsageBoardApp/AppTheme.swift` | Core 的 AppTheme 到 NSAppearance 的映射 |
 | `Sources/UsageBoardApp/AppLocalization.swift` | 中英文固定文案 |
+| `Sources/UsageBoardApp/AppMenu.swift` / `UpdatePrompt.swift` | 应用/编辑/窗口菜单；更新提示非模态面板 |
 | `Sources/UsageBoardApp/Dashboard/` | 分组/标签页、用量行、统计图与滚动布局 |
 | `Sources/UsageBoardApp/Settings/` | 通用、插件、关于三页，插件编辑草稿和参数表单 |
 | `Sources/UsageBoardApp/DesignSystem/` | 视觉 token、应用/品牌图标、倒计时和套餐徽章 |
 | `Tests/UsageBoardTests/` | Core XCTest |
 | `Tests/UsageBoardAppTests/` | Store 调度、主题、语言提示、图标、popover 与图表 XCTest |
 | `Tests/PluginTests/` | 内置插件、公共缓存和错误分类、解释器兼容性测试 |
+| `Tests/ScriptTests/` | 打包与发布脚本的隔离 bash 测试 |
 | `Resources/BundledPlugins/` | 八个 Python 插件和 `_common.py` |
 | `Resources/icons/` | light/dark 插件 PNG，来源与哈希见目录内 README |
 | `Resources/PluginAuthoringGuide.html` | 随 app 打包的插件协议说明 |
@@ -206,10 +208,12 @@ BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径�
 ```sh
 swift build
 swift test
-python3 -m pytest Tests/PluginTests -q
+python3 -m unittest discover -s Tests/PluginTests -q
 python3 -m py_compile Resources/BundledPlugins/*.py
 bash -n scripts/build.sh scripts/release.sh
-bash Tests/ScriptTests/test_release_version_timing.sh
+for script in Tests/ScriptTests/*.sh; do
+  bash "$script" || exit 1
+done
 ```
 
 按修改范围选用验证：Swift 改动运行相关 XCTest 和构建；内置插件改动运行 Python 测试，并通过 `bash scripts/build.sh` 重建才能在已打包 app 生效。只改用户独立插件时无需重建 app。纯文档修订检查代码依据、链接、示例和 `git diff --check`，无需重启应用。

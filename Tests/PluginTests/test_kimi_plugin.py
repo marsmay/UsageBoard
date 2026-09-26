@@ -1,4 +1,4 @@
-"""Tests for kimi-usage-plugin.py — run with: python3 -m pytest Tests/PluginTests/test_kimi_plugin.py"""
+"""Tests for kimi-usage-plugin.py — run with: python3 -m unittest discover -s Tests/PluginTests"""
 
 import importlib.util
 import json

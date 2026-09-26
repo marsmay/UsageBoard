@@ -1,4 +1,4 @@
-"""Tests for glm-usage-plugin.py — run with: python3 -m pytest Tests/PluginTests/test_glm_plugin.py"""
+"""Tests for glm-usage-plugin.py — run with: python3 -m unittest discover -s Tests/PluginTests"""
 
 import importlib.util
 import json

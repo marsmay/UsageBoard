@@ -164,7 +164,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-`_common.py` 提供参数解析（`parse_usageboard_params`）、语言检测（`app_language`）、翻译工厂（`make_translator`）、输出函数（`success` / `failure`）、颜色与状态计算（`color_for` / `status_for` / `numeric`）、不跟随重定向的 JSON 请求（`fetch_json`）、统一错误分类（`run_query`）与 API Key 清洗（`require_api_key`），完整函数列表见源码。
+`_common.py` 提供参数解析（`parse_usageboard_params`）、语言检测（`app_language`）、翻译工厂（`make_translator`）、输出函数（`success` / `failure`）、颜色与状态计算（`color_for` / `status_for` / `numeric`）、不跟随重定向的 JSON 请求（`fetch_json`）、统一错误分类（`run_query` / `handle_http_error` / `handle_url_error`）与 API Key 清洗（`require_api_key`），完整函数列表见源码。
 
 ### 返回数据格式
 
@@ -244,6 +244,7 @@ if __name__ == "__main__":
   "overviewDisplayMode": "tabs",
   "chartMode": "line",
   "launchAtLogin": false,
+  "showUpdateBadge": true,
   "plugins": [
     {
       "stateID": "stable-cache-id",
@@ -272,7 +273,7 @@ if __name__ == "__main__":
 ```
 
 - `overviewDisplayMode`：`grouped` / `tabs`；`chartMode`：`line` / `bar`（旧配置缺失回退 `line`）；`theme`：`light` / `dark` / `system`（缺失按 `system`），切换立即生效并持久保存。
-- `language`：`zh-Hans` / `en`，重启后生效；`launchAtLogin` 控制开机启动。
+- `language`：`zh-Hans` / `en`，重启后生效；`launchAtLogin` 控制开机启动；`showUpdateBadge` 控制主界面是否显示新版本胶囊提示（缺失按 `true`）。
 - `plugins[].stateID` 是持久化缓存 ID；修改脚本路径、参数或 metadata 后重新生成。
 - `plugins[].executablePath` 使用实际文件路径，不展开 `~` 或 shell 表达式，建议通过文件选择器填写。
 - `plugins[].enabled` 为 `false` 时不执行插件；`plugins[].metadata` 通常由脚本头部注释块解析生成；`plugins[].parameterValues` 保存设置页填写的参数。
@@ -284,7 +285,7 @@ if __name__ == "__main__":
 ```bash
 swift build                                 # Debug 构建
 swift test                                  # Swift 测试
-python3 -m pytest Tests/PluginTests -q      # 插件测试（需要 pytest，使用临时数据与网络替身，不需要真实凭据）
+python3 -m unittest discover -s Tests/PluginTests -q      # 插件测试（使用临时数据与网络替身，不需要真实凭据）
 swift build -c release                      # Release 构建
 bash scripts/build.sh                       # 本地构建、签名并启动 dist/UsageBoard.app
 ```
@@ -299,7 +300,7 @@ bash scripts/build.sh                       # 本地构建、签名并启动 dis
 bash scripts/release.sh <version> "<release notes>"
 ```
 
-脚本完成 release 构建、写入版本与 build 号、复制资源、签名、生成 `UsageBoard-<version>.zip` 和 `version.json`（更新说明缺省时取最近 tag 到 HEAD 的提交），上传服务器并清理远端旧 zip（保留最近三个）。
+脚本完成 release 构建、写入版本与 build 号、复制资源、签名、生成 `UsageBoard-<version>.zip` 和 `version.json`（含 `updatedAt`、`latestVersion`、`latestBuild`、`downloadURL`、`notes`；更新说明缺省时取最近 tag 到 HEAD 的提交），上传服务器并清理远端旧 zip（保留最近三个）。
 
 脚本不创建或推送 Git tag、不发布 GitHub Release、不更新 Homebrew cask；完整发布需另行完成这些步骤，并核对各渠道版本与 zip SHA-256 一致。发布前先停止旧 UsageBoard 实例；与 build.sh 不同，release.sh 不负责停止或启动应用。
 
@@ -322,6 +323,7 @@ Resources/
 scripts/
   build.sh              本地构建、签名、启动
   release.sh            服务器发布脚本
+  _package_common.sh    build/release 共用打包逻辑
 website/                项目主页静态文件
 dist/
   UsageBoard.app        本地测试 app bundle

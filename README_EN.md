@@ -164,7 +164,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-`_common.py` provides parameter parsing (`parse_usageboard_params`), language detection (`app_language`), a translation factory (`make_translator`), output helpers (`success` / `failure`), color and status helpers (`color_for` / `status_for` / `numeric`), and unified HTTP error handling (`handle_http_error` / `handle_url_error`). See its source for the full list.
+`_common.py` provides parameter parsing (`parse_usageboard_params`), language detection (`app_language`), a translation factory (`make_translator`), output helpers (`success` / `failure`), color and status helpers (`color_for` / `status_for` / `numeric`), redirect-free JSON fetches (`fetch_json`), unified error classification (`run_query` / `handle_http_error` / `handle_url_error`), and API key cleanup (`require_api_key`). See its source for the full list.
 
 ### Response Data Format
 
@@ -244,6 +244,7 @@ Main configuration JSON structure:
   "overviewDisplayMode": "tabs",
   "chartMode": "line",
   "launchAtLogin": false,
+  "showUpdateBadge": true,
   "plugins": [
     {
       "stateID": "stable-cache-id",
@@ -272,7 +273,7 @@ Main configuration JSON structure:
 ```
 
 - `overviewDisplayMode`: `grouped` / `tabs`; `chartMode`: `line` / `bar` (older configurations default to `line`); `theme`: `light` / `dark` / `system` (missing values default to `system`) — theme changes apply immediately and persist.
-- `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login.
+- `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login; `showUpdateBadge` controls whether the popover shows the new-version capsule (defaults to `true` when absent).
 - `plugins[].stateID` is a persistent cache ID; editing the script path, parameters, or metadata generates a new one.
 - `plugins[].executablePath` must be an actual file path; `~` and shell expressions are not expanded — use the file picker.
 - `plugins[].enabled`: when `false`, the plugin is not executed. `plugins[].metadata` is typically parsed from the script header comment block; `plugins[].parameterValues` stores values from the settings UI.
@@ -284,7 +285,7 @@ Development requires Xcode and the Swift 6.3 toolchain:
 ```bash
 swift build                                 # Debug build
 swift test                                  # Swift tests
-python3 -m pytest Tests/PluginTests -q      # Plugin tests (requires pytest; uses temporary data and network doubles — no real credentials)
+python3 -m unittest discover -s Tests/PluginTests -q      # Plugin tests (uses temporary data and network doubles — no real credentials)
 swift build -c release                      # Release build
 bash scripts/build.sh                       # Build, sign, and launch dist/UsageBoard.app locally
 ```
@@ -299,7 +300,7 @@ The release script uploads directly to the server — run it only when publishin
 bash scripts/release.sh <version> "<release notes>"
 ```
 
-The script builds a release, writes the version and build number, copies resources, signs, generates `UsageBoard-<version>.zip` and `version.json` (release notes default to commits since the last tag), uploads to the server, and prunes old remote zips (keeping the latest three).
+The script builds a release, writes the version and build number, copies resources, signs, generates `UsageBoard-<version>.zip` and `version.json` (with `updatedAt`, `latestVersion`, `latestBuild`, `downloadURL`, `notes`; release notes default to commits since the last tag), uploads to the server, and prunes old remote zips (keeping the latest three).
 
 It does not create or push Git tags, publish GitHub Releases, or update the Homebrew cask — complete those steps separately and verify matching versions and zip SHA-256 values across channels. Stop the existing UsageBoard instance before publishing; unlike build.sh, release.sh does not stop or launch the app.
 
@@ -322,6 +323,7 @@ Resources/
 scripts/
   build.sh              Local build, sign, and launch
   release.sh            Server release script
+  _package_common.sh    Shared packaging logic for build/release
 website/                Project homepage static files
 dist/
   UsageBoard.app        Local test app bundle

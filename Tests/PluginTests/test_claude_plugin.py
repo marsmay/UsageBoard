@@ -1,4 +1,4 @@
-"""Tests for claude-usage-plugin.py — run with: python3 -m pytest Tests/PluginTests/test_claude_plugin.py"""
+"""Tests for claude-usage-plugin.py — run with: python3 -m unittest discover -s Tests/PluginTests"""
 
 import importlib.util
 import json
