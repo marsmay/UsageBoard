@@ -612,5 +612,175 @@ class TestParseRecordsReturnsBreakdown(unittest.TestCase):
         })
 
 
+class TestClassifierStats(unittest.TestCase):
+    def setUp(self):
+        self.start = datetime(2026, 5, 14, tzinfo=timezone.utc)
+        self.end = datetime(2026, 5, 16, tzinfo=timezone.utc)
+        self.record = {
+            "ts": datetime(2026, 5, 15, 10, tzinfo=timezone.utc).timestamp() * 1000,
+            "tool": "Bash", "allowlisted": False, "decision": "allowed",
+            "classifierSource": "local", "classifierModel": "provider/claude-sonnet-4-5(high)",
+            "inputTokens": 100, "outputTokens": 7,
+            "cacheReadInputTokens": 900, "cacheCreationInputTokens": 50,
+            "stage": "fast",
+        }
+
+    def write_log(self, directory, records):
+        os.makedirs(directory, exist_ok=True)
+        path = Path(directory) / plugin.CLASSIFIER_LOG_FILENAME
+        path.write_text("".join(json.dumps(record) + "\n" for record in records))
+        return path
+
+    def test_actual_usage_and_two_stage_total_counted_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_log(tmp, [self.record, {**self.record, "stage": "thinking", "inputTokens": 300}])
+            records = plugin.classifier_records([tmp], self.start, self.end)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0][1], "claude-sonnet-4-5")
+        self.assertEqual(records[0][2], {"input": 100, "output": 7, "cache_creation": 50, "cache_read": 900})
+        self.assertEqual(sum(plugin.compute_tokens(r[2]) for r in records), 2314)
+
+    def test_invalid_lines_do_not_hide_later_usage_and_partial_line_is_deferred(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_log(tmp, [None, [], {**self.record, "ts": "bad"},
+                                        {**self.record, "inputTokens": -1},
+                                        {**self.record, "inputTokens": True},
+                                        {**self.record, "inputTokens": float("nan")},
+                                        {**self.record, "inputTokens": float("inf")},
+                                        {**self.record, "inputTokens": 1.5},
+                                        {**self.record, "ts": float("inf")}])
+            with path.open("ab") as f:
+                f.write(b'{"bad":\xff}\nnot-json\n')
+                f.write((json.dumps(self.record) + "\n").encode())
+                f.write(json.dumps(self.record).encode())
+            self.assertEqual(len(plugin.classifier_records([tmp], self.start, self.end)), 1)
+            with path.open("ab") as f:
+                f.write(b"\n")
+            self.assertEqual(len(plugin.classifier_records([tmp], self.start, self.end)), 2)
+
+    def test_skips_server_allowlist_unknown_source_and_outside_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_log(tmp, [
+                {**self.record, "classifierSource": "server"},
+                {**self.record, "classifierSource": None},
+                {**self.record, "allowlisted": True},
+                {**self.record, "classifierModel": ""},
+                {**self.record, "ts": 0},
+                {**self.record, "ts": self.end.timestamp() * 1000 + 1},
+                {**self.record, "decision": "blocked"},
+            ])
+            records = plugin.classifier_records([tmp], self.start, self.end)
+        self.assertEqual(len(records), 1)  # Blocked decisions still consume tokens.
+
+    def test_known_directories_and_file_aliases_count_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self.write_log(os.path.join(tmp, "project1"), [self.record, self.record])
+            second = self.write_log(os.path.join(tmp, "project2"), [self.record])
+            aliases = Path(tmp) / "aliases"
+            aliases.mkdir()
+            os.link(first, aliases / plugin.CLASSIFIER_LOG_FILENAME)
+            symlink = Path(tmp) / "symlink"
+            symlink.mkdir()
+            (symlink / plugin.CLASSIFIER_LOG_FILENAME).symlink_to(second)
+            (Path(tmp) / "cycle").symlink_to(tmp, target_is_directory=True)
+            self.write_log(os.path.join(tmp, "node_modules", "ignored"), [self.record])
+            records = plugin.classifier_records(
+                [str(first.parent), str(second.parent), str(aliases), str(symlink), str(first.parent)],
+                self.start, self.end)
+        # No request ID: equal records may be separate legitimate calls; preserve them.
+        self.assertEqual(len(records), 3)
+
+    def test_merge_by_model_is_repeatable_and_does_not_pollute_session_cache(self):
+        now = datetime.now(timezone.utc) - timedelta(seconds=1)
+        day = now.astimezone().strftime("%Y-%m-%d")
+        daily = {day: {"claude-sonnet-4-5": {"input": 10, "output": 2, "cache_read": 0, "cache_creation": 0}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_log(tmp, [{**self.record, "ts": now.timestamp() * 1000}])
+            merged = plugin.add_classifier_stats(daily, [tmp])
+            self.assertEqual(merged, plugin.add_classifier_stats(daily, [tmp]))
+            self.assertEqual(list(merged[day]), ["claude-sonnet-4-5"])
+            self.assertEqual(merged[day]["claude-sonnet-4-5"]["input"], 110)
+            self.assertEqual(daily[day]["claude-sonnet-4-5"]["input"], 10)
+            self.assertEqual(plugin.add_classifier_stats(daily, []), daily)
+            chart = plugin.build_chart({"CLAUDE_ONLY": "true"}, merged, "en", plugin._translate("en"))
+            self.assertEqual(sum(s["tokens"] for b in chart["buckets"] for s in b["segments"]), 1069)
+
+    def test_cwd_discovery_cache_refresh_and_no_cache_pollution(self):
+        now = datetime.now(timezone.utc) - timedelta(seconds=1)
+        day = now.astimezone().strftime("%Y-%m-%d")
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            sessions = data / "projects" / "project"
+            sessions.mkdir(parents=True)
+            project = Path(tmp) / "work"
+            log = self.write_log(project, [{**self.record, "ts": now.timestamp() * 1000}])
+            session = sessions / "session.jsonl"
+            # cwd discovery must not depend on assistant usage or record timestamp.
+            session.write_text(json.dumps({"type": "user", "cwd": str(project)}) + "\n")
+            cold = plugin.maintain_cache(str(data))
+            self.assertEqual(cold[day]["claude-sonnet-4-5"]["input"], 100)
+            cache = plugin.load_stats_cache(str(data))
+            self.assertEqual(cache["classifier_dirs"], [str(project)])
+            self.assertEqual(cache["days"][day], {})
+            # Session mtime may be old; the persisted cwd still locates new decisions.
+            os.utime(session, (0, 0))
+            with log.open("a") as f:
+                f.write(json.dumps({**self.record, "ts": now.timestamp() * 1000}) + "\n")
+            warm = plugin.maintain_cache(str(data))
+            self.assertEqual(warm[day]["claude-sonnet-4-5"]["input"], 200)
+            self.assertEqual(plugin.maintain_cache(str(data)), warm)
+            self.assertEqual(plugin.load_stats_cache(str(data))["days"][day], {})
+            log.unlink()
+            self.assertEqual(plugin.maintain_cache(str(data))[day], {})
+
+    def test_new_cwd_is_discovered_during_incremental_scan(self):
+        now = datetime.now(timezone.utc) - timedelta(seconds=1)
+        day = now.astimezone().strftime("%Y-%m-%d")
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions = Path(tmp) / "data" / "projects" / "project"
+            sessions.mkdir(parents=True)
+            data = str(sessions.parent.parent)
+            plugin.maintain_cache(data)
+            project = Path(tmp) / "work"
+            self.write_log(project, [{**self.record, "ts": now.timestamp() * 1000}])
+            (sessions / "session.jsonl").write_text(
+                json.dumps({"type": "user", "cwd": str(project)}) + "\n")
+            self.assertEqual(plugin.maintain_cache(data)[day]["claude-sonnet-4-5"]["input"], 100)
+
+    def test_none_does_not_scan_classifier_logs(self):
+        with patch.object(plugin, "classifier_records", side_effect=AssertionError("must not scan")):
+            TestPlanAndStatsNone()._run_main([("PLAN", "none"), ("STAT_PERIOD", "none")])
+
+    def test_previous_cache_rebuild_discovers_cwd_with_old_mtime(self):
+        now = datetime.now(timezone.utc) - timedelta(seconds=1)
+        day = now.astimezone().strftime("%Y-%m-%d")
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions = Path(tmp) / "data" / "projects" / "project"
+            sessions.mkdir(parents=True)
+            data = str(sessions.parent.parent)
+            project = Path(tmp) / "work"
+            self.write_log(project, [{**self.record, "ts": now.timestamp() * 1000}])
+            session = sessions / "session.jsonl"
+            session.write_text(json.dumps({"type": "user", "cwd": str(project)}) + "\n")
+            os.utime(session, (0, 0))
+            plugin.save_stats_cache(data, {"version": 7, "last_date": day, "days": {}})
+            daily = plugin.maintain_cache(data)
+            self.assertEqual(daily[day]["claude-sonnet-4-5"]["input"], 100)
+            self.assertEqual(plugin.load_stats_cache(data)["version"], 8)
+
+    def test_date_boundaries_and_unreadable_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.write_log(tmp, [
+                {**self.record, "ts": self.start.timestamp() * 1000},
+                {**self.record, "ts": self.end.timestamp() * 1000},
+                {**self.record, "ts": self.start.timestamp() * 1000 - 1},
+            ])
+            records = plugin.classifier_records(
+                ["relative", "\x00/invalid", "/missing-usageboard-test-directory", tmp], self.start, self.end)
+            self.assertEqual(len(records), 2)
+            grouped = plugin.group_by_local_date(records)
+            self.assertEqual(set(grouped), {ts.astimezone().strftime("%Y-%m-%d") for ts in (self.start, self.end)})
+
+
 if __name__ == "__main__":
     unittest.main()

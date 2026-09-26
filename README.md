@@ -88,6 +88,11 @@ xattr -cr /Applications/UsageBoard.app
 
 实现细节：GLM、Codex 与 Claude 的图表缓存各自维护版本号，升级旧缓存时一次性重建近 30 天数据，随后恢复增量更新；Claude、Codex 与智谱统计缓存原子写入，失败保留旧缓存；Codex 按行解码 UTF-8，损坏行整行跳过；Claude 空套餐名回退配置值再到 pro；Kimi 省略时区不明的重置时间；MiniMax 对显式 null 或非对象 `base_resp` 返回解析失败，缺失字段保持兼容。
 
+
+Claude classifier 统计无需接收服务：使用 `AUTOMODE_DECISION_LOG=1 claude` 启动 Claude Code，或在用户级 `~/.claude/settings.json` 的 `env` 中加入 `"AUTOMODE_DECISION_LOG": "1"` 后启动新会话。Claude 会向首次写日志时的工作目录追加 `.automode_decisions.jsonl`；插件从 `DATA_DIR/projects` 会话记录的 `cwd` 自动发现这些文件，读取本地 classifier 的实际四类 token，并合并到同名模型，不增加图表后缀。无需单独指定日志目录；依赖正常保存的会话记录，`--no-session-persistence` 会话的目录可能无法自动发现。不要提交决策日志，可加入项目的本地 Git 排除规则。
+
+该开关已在 Claude Code 2.1.280 实测，但属于内部接口，升级后可能变化。只能统计启用后的记录；服务端 classifier、缺少实际 usage 的记录不追加，避免与主请求重复计数。两阶段及部分重试已包含在决策总量中，不再重复相加；模型回退时总量可能归到最终模型。日志无请求 ID，不按相同内容去重，只对指向同一文件的路径去重；不要在扫描范围保留日志副本。读取时跳过损坏行及尚未追加完成的末行。classifier 每次独立汇总近 30 天，删除日志后对应统计会消失。
+
 ## 插件开发
 
 推荐使用 Python 脚本。主程序执行 `.py` 插件时使用：

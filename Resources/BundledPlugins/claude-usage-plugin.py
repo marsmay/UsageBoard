@@ -66,6 +66,7 @@ import json
 import os
 import sys
 import glob
+import math
 import subprocess
 import urllib.error
 from datetime import datetime, timezone, timedelta
@@ -88,8 +89,9 @@ from _common import (  # noqa: E402
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CACHE_VERSION = 7  # 重建可能被旧 mtime 预过滤漏计的历史缓存。
+CACHE_VERSION = 8  # 重建会话工作目录索引，用于发现 classifier 决策日志。
 CACHE_FILENAME = ".usageboard-chart-cache.json"
+CLASSIFIER_LOG_FILENAME = ".automode_decisions.jsonl"
 PARSE_ERROR = "parse_error"
 REQUEST_TIMEOUT = "request_timeout"
 NETWORK_ERROR = "network_error"
@@ -224,7 +226,7 @@ def all_jsonl_files(data_dir):
     expanded = os.path.expanduser(data_dir)
     return glob.glob(os.path.join(expanded, "projects", "**", "*.jsonl"), recursive=True)
 
-def parse_records(files, start_dt, end_dt):
+def parse_records(files, start_dt, end_dt, project_dirs=None):
     records_by_id = {}
     for filepath in files:
         try:
@@ -237,6 +239,11 @@ def parse_records(files, start_dt, end_dt):
                         obj = json.loads(line)
                     except Exception:
                         continue
+                    if not isinstance(obj, dict):
+                        continue
+                    cwd = obj.get("cwd")
+                    if project_dirs is not None and isinstance(cwd, str) and os.path.isabs(cwd):
+                        project_dirs.add(cwd)
                     if obj.get("type") != "assistant":
                         continue
                     msg = obj.get("message", {})
@@ -293,6 +300,81 @@ def group_by_local_date(records):
             bucket[k] += b.get(k, 0)
     return result
 
+
+def classifier_records(project_dirs, start_dt, end_dt):
+    """Read optional local auto-mode decisions, independent of the session cache."""
+    records = []
+    seen_files = set()
+    # Read only the exact log name in known session working directories.
+    for directory in project_dirs:
+        if not isinstance(directory, str) or not os.path.isabs(directory):
+            continue
+        path = os.path.join(directory, CLASSIFIER_LOG_FILENAME)
+        try:
+            with open(path, "rb") as stream:
+                stat = os.fstat(stream.fileno())
+                identity = (stat.st_dev, stat.st_ino)
+                if identity in seen_files:
+                    continue
+                seen_files.add(identity)
+                for line in stream:
+                    # Claude appends asynchronously; defer an incomplete last line.
+                    if not line.endswith(b"\n"):
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        if not isinstance(obj, dict):
+                            continue
+                        # Server-side decisions may already be included in main usage.
+                        if obj.get("allowlisted") is not False or obj.get("classifierSource") != "local":
+                            continue
+                        model = obj.get("classifierModel")
+                        if not isinstance(model, str) or not model.strip():
+                            continue
+                        model = normalize_model_name(model)
+                        if not model:
+                            continue
+                        timestamp = obj.get("ts")
+                        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+                            continue
+                        ts = datetime.fromtimestamp(timestamp / 1000, timezone.utc)
+                        if not start_dt <= ts <= end_dt:
+                            continue
+                        breakdown = {}
+                        for key, field in (
+                            ("input", "inputTokens"), ("output", "outputTokens"),
+                            ("cache_creation", "cacheCreationInputTokens"),
+                            ("cache_read", "cacheReadInputTokens"),
+                        ):
+                            value = obj.get(field, 0)
+                            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                                    or not math.isfinite(value) or value < 0 or value != int(value)):
+                                raise ValueError("invalid token count")
+                            breakdown[key] = int(value)
+                        if compute_tokens(breakdown) > 0:
+                            records.append((ts, model, breakdown))
+                    except (ValueError, TypeError, OverflowError, OSError):
+                        continue
+        except (OSError, ValueError):
+            continue
+    return records
+
+
+def add_classifier_stats(daily, project_dirs):
+    now = utc_now()
+    # Include the earliest local date even in UTC+14; build_chart selects its days.
+    start = datetime.combine(_parse_date(local_today()) - timedelta(days=29),
+                             datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=14)
+    extra = group_by_local_date(classifier_records(project_dirs, start, now))
+    merged = {day: {model: dict(tokens) for model, tokens in models.items()}
+              for day, models in daily.items()}
+    for day, models in extra.items():
+        for model, tokens in models.items():
+            target = merged.setdefault(day, {}).setdefault(model, {})
+            for key, value in tokens.items():
+                target[key] = target.get(key, 0) + value
+    return merged
+
 # ─── Stats cache ──────────────────────────────────────────────────────────────
 
 def _cache_path(data_dir):
@@ -313,7 +395,7 @@ def _format_date(d):
     return d.strftime("%Y-%m-%d")
 
 def maintain_cache(data_dir):
-    """Build and maintain a 30-day chart cache. Returns {date: {model: tokens}}."""
+    """Cache session usage and cwd discovery; merge live classifier totals on return."""
     today = _parse_date(local_today())
     cutoff = today - timedelta(days=29)
 
@@ -323,7 +405,8 @@ def maintain_cache(data_dir):
     def full_scan_and_save():
         scan_start_utc = datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=timezone.utc) - timedelta(hours=14)
         # 全量重建以记录时间为准，导入的日志可能保留与内容不一致的旧 mtime。
-        records = parse_records(all_jsonl_files(data_dir), scan_start_utc, now)
+        project_dirs = set()
+        records = parse_records(all_jsonl_files(data_dir), scan_start_utc, now, project_dirs)
         by_day = group_by_local_date(records)
         days = {d: by_day.get(d, {}) for d in
                 (_format_date(cutoff + timedelta(days=i)) for i in range(30))
@@ -332,10 +415,11 @@ def maintain_cache(data_dir):
             "version": CACHE_VERSION,
             "last_date": _format_date(today),
             "days": days,
+            "classifier_dirs": sorted(project_dirs),
         })
-        return days
+        return add_classifier_stats(days, project_dirs)
 
-    if cache is None:
+    if cache is None or not isinstance(cache.get("classifier_dirs", []), list):
         return full_scan_and_save()
 
     try:
@@ -353,7 +437,9 @@ def maintain_cache(data_dir):
     cutoff_ts = scan_start_utc.timestamp()
     # 会话文件可能在 glob 与 stat 之间被 Claude Code 轮转删除，stat 失败跳过该文件。
     recent_files = filter_by_mtime(all_jsonl_files(data_dir), cutoff_ts)
-    records = parse_records(recent_files, scan_start_utc, now)
+    project_dirs = {path for path in cache.get("classifier_dirs", [])
+                    if isinstance(path, str) and os.path.isabs(path)}
+    records = parse_records(recent_files, scan_start_utc, now, project_dirs)
     new_days = group_by_local_date(records)
 
     merged = {}
@@ -374,8 +460,9 @@ def maintain_cache(data_dir):
         "version": CACHE_VERSION,
         "last_date": _format_date(today),
         "days": merged,
+        "classifier_dirs": sorted(project_dirs),
     })
-    return merged
+    return add_classifier_stats(merged, project_dirs)
 
 # ─── Chart ────────────────────────────────────────────────────────────────────
 

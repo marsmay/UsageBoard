@@ -67,7 +67,9 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
-Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；缓存版本 7 会重建旧版本可能漏计的历史数据。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
+Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；缓存版本 8 重建会话统计并收集所有记录中的绝对 `cwd`，持久化到 `classifier_dirs`，增量扫描继续补充目录。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
+
+Claude classifier 使用客户端内部开关 `AUTOMODE_DECISION_LOG=1` 写出的工作目录 `.automode_decisions.jsonl`，无需服务或额外插件参数。插件仅检查缓存中已发现 cwd 下的固定文件名，不递归遍历项目；通过 device/inode 去除同一文件的路径别名。只累计 `allowlisted: false`、`classifierSource: local` 且有合法实际 token 的记录，按毫秒时间戳归属本地日期，与会话统计合并到同名模型。classifier 用量每次全量读取近 30 天，不写入会话 days 缓存，避免重复累加或删除日志后残留。无请求 ID，不对相同行做去重；损坏行、非法数值和未完成末行逐行跳过。无持久化会话无法保证发现 cwd；服务端 classifier 不追加，模型回退总量可能归到最终模型。这是 2.1.280 实测的内部日志格式，不保证其他版本或所有失败/取消路径完整覆盖。
 
 配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
 

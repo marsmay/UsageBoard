@@ -88,6 +88,11 @@ Per-plugin notes:
 
 Implementation details: GLM, Codex, and Claude chart caches each track their own cache version and rebuild the previous 30 days once when upgrading, then resume incremental updates. Claude, Codex, and Zhipu stats caches are written atomically — a failed write preserves the previous complete cache. Codex decodes UTF-8 line by line and skips corrupted lines entirely. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the compatibility behavior.
 
+
+Claude classifier stats require no receiving service: launch Claude Code with `AUTOMODE_DECISION_LOG=1 claude`, or add `"AUTOMODE_DECISION_LOG": "1"` to `env` in the user-level `~/.claude/settings.json` and start a new session. Claude appends `.automode_decisions.jsonl` in its working directory when logging first starts. The plugin discovers these files from session `cwd` fields under `DATA_DIR/projects`, reads the four actual token categories for local classifiers, and merges them into the same model names without a chart suffix. No separate log directory is needed; discovery depends on persisted transcripts, so directories used only with `--no-session-persistence` may not be discovered. Keep decision logs out of commits, for example through a local Git exclude rule.
+
+This internal switch was verified with Claude Code 2.1.280 and may change in future versions. Only records written after enabling it are available. Server-side classifier records and records without actual usage are not added, avoiding overlap with main requests. Decision totals already include both stages and some retries; they are not added again. Model fallback may attribute combined usage to the final model. Logs have no request ID: identical records are retained, while paths referring to the same file are deduplicated. Do not keep copied logs in discovered directories. Malformed lines and an unfinished final line are skipped. Classifier usage for the last 30 days is aggregated afresh on each run; deleting a log removes its contribution.
+
 ## Plugin Development
 
 Python scripts are recommended. The app executes `.py` plugins with:
