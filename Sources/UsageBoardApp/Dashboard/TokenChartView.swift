@@ -9,26 +9,35 @@ struct TokenUsageChartView: View {
     @State private var chartHover: TokenChartHover?
     @State private var chartContentMinX: CGFloat?
     // O(buckets×models) 的派生数据按 chart 缓存，避免 hover 移动等高频 body 求值反复重算。
-    @State private var cachedSeries: [TokenChartSeries] = []
-    @State private var cachedModelSummaries: [TokenModelSummary] = []
-    @State private var cachedTotalTokens: Double = 0
-    private var strings: AppLocalization {
-        .shared
+    @State private var derived: DerivedData
+    private var strings: AppLocalization { .shared }
+
+    init(chart: PluginChart, language: AppLanguage, chartMode: ChartMode) {
+        self.chart = chart
+        self.language = language
+        self.chartMode = chartMode
+        _derived = State(initialValue: Self.makeDerivedData(chart: chart, language: language))
     }
 
-    private func rebuildDerivedData() {
-        cachedTotalTokens = chart.buckets.reduce(0) { $0 + $1.total }
-        cachedModelSummaries = TokenChartModel.aggregatedModels(in: chart.buckets)
+    private struct DerivedData {
+        var series: [TokenChartSeries]
+        var modelSummaries: [TokenModelSummary]
+        var totalTokens: Double
+    }
+
+    private static func makeDerivedData(chart: PluginChart, language: AppLanguage) -> DerivedData {
+        let strings = AppLocalization(language: language)
+        let summaries = TokenChartModel.aggregatedModels(in: chart.buckets)
             .enumerated()
             .map { index, element in
                 TokenModelSummary(name: element.name, total: element.total, color: modelColor(at: index))
             }
-        cachedSeries = [TokenChartSeries(
+        let series = [TokenChartSeries(
             name: strings.text(.totalTokenUsage),
             tooltipName: strings.text(.chartTooltipTotal),
             color: .blue,
             values: chart.buckets.map(\.total)
-        )] + cachedModelSummaries.map { summary in
+        )] + summaries.map { summary in
             TokenChartSeries(
                 name: strings.usageSuffix(for: summary.name),
                 tooltipName: summary.name,
@@ -38,19 +47,13 @@ struct TokenUsageChartView: View {
                 }
             )
         }
+        return DerivedData(series: series, modelSummaries: summaries,
+                           totalTokens: chart.buckets.reduce(0) { $0 + $1.total })
     }
 
-    private var series: [TokenChartSeries] {
-        cachedSeries
-    }
-
-    private var modelSummaries: [TokenModelSummary] {
-        cachedModelSummaries
-    }
-
-    private var totalTokens: Double {
-        cachedTotalTokens
-    }
+    private var series: [TokenChartSeries] { derived.series }
+    private var modelSummaries: [TokenModelSummary] { derived.modelSummaries }
+    private var totalTokens: Double { derived.totalTokens }
 
     private var visibleSeries: [TokenChartSeries] {
         let filtered = series.filter { $0.values.contains(where: { $0 > 0 }) }
@@ -181,10 +184,6 @@ struct TokenUsageChartView: View {
                 }
                 .coordinateSpace(name: "TokenChartViewport")
                 .frame(height: TokenChartLayout.height)
-                .onAppear(perform: rebuildDerivedData)
-                .onChange(of: chart) { _ in
-                    rebuildDerivedData()
-                }
                 .onChange(of: chartMode) { _ in
                     chartHover = nil
                 }
@@ -195,6 +194,12 @@ struct TokenUsageChartView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 10)
             }
+        }
+        .onChange(of: chart) { _ in
+            derived = Self.makeDerivedData(chart: chart, language: language)
+        }
+        .onChange(of: language) { _ in
+            derived = Self.makeDerivedData(chart: chart, language: language)
         }
     }
 
@@ -281,7 +286,7 @@ struct TokenUsageChartView: View {
         return max(visibleWidth, CGFloat(max(chart.buckets.count - 1, 1)) * step + 110)
     }
 
-    private func modelColor(at index: Int) -> Color {
+    private static func modelColor(at index: Int) -> Color {
         let palette: [Color] = [
             .green,
             .orange,
@@ -374,7 +379,7 @@ struct TokenModelSummary: Identifiable {
     var id: String { name }
 }
 
-struct TokenChartSeries: Identifiable {
+struct TokenChartSeries: Identifiable, Equatable {
     var name: String
     var tooltipName: String
     var color: Color

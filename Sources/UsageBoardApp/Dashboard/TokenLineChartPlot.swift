@@ -87,38 +87,9 @@ struct TokenLineChartPlot: View {
     }
 
     private func lineSeries(in plotRect: CGRect) -> some View {
-        ZStack {
-            ForEach(series) { item in
-                Path { path in
-                    guard !item.values.isEmpty else { return }
-                    path.move(to: CGPoint(x: xPosition(for: 0, in: plotRect), y: plotRect.maxY))
-                    for index in item.values.indices {
-                        path.addLine(to: CGPoint(
-                            x: xPosition(for: index, in: plotRect),
-                            y: yPosition(for: item.values[index], in: plotRect)
-                        ))
-                    }
-                    path.addLine(to: CGPoint(x: xPosition(for: item.values.count - 1, in: plotRect), y: plotRect.maxY))
-                    path.closeSubpath()
-                }
-                .fill(item.color.opacity(0.06))
-
-                Path { path in
-                    for index in item.values.indices {
-                        let point = CGPoint(
-                            x: xPosition(for: index, in: plotRect),
-                            y: yPosition(for: item.values[index], in: plotRect)
-                        )
-                        if index == item.values.startIndex {
-                            path.move(to: point)
-                        } else {
-                            path.addLine(to: point)
-                        }
-                    }
-                }
-                .stroke(item.color, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
-            }
-        }
+        TokenLineSeriesDrawing(series: series, bucketCount: buckets.count,
+                               maximum: axisScale.maximum, plotRect: plotRect)
+            .equatable()
     }
 
     private func hoverIndicator(index: Int, in plotRect: CGRect) -> some View {
@@ -166,6 +137,59 @@ struct TokenLineChartPlot: View {
     private func valueAt(_ index: Int, in series: TokenChartSeries) -> Double {
         guard series.values.indices.contains(index) else { return 0 }
         return series.values[index]
+    }
+}
+
+// Only data, scale and geometry invalidate the expensive paths; hover stays in the parent overlay.
+private struct TokenLineSeriesDrawing: View, Equatable {
+    var series: [TokenChartSeries]
+    var bucketCount: Int
+    var maximum: Double
+    var plotRect: CGRect
+
+    var body: some View {
+        ZStack {
+            ForEach(series) { item in
+                Path { path in
+                    guard !item.values.isEmpty else { return }
+                    path.move(to: CGPoint(x: xPosition(for: 0, in: plotRect), y: plotRect.maxY))
+                    for index in item.values.indices {
+                        path.addLine(to: CGPoint(
+                            x: xPosition(for: index, in: plotRect),
+                            y: yPosition(for: item.values[index], in: plotRect)
+                        ))
+                    }
+                    path.addLine(to: CGPoint(x: xPosition(for: item.values.count - 1, in: plotRect), y: plotRect.maxY))
+                    path.closeSubpath()
+                }
+                .fill(item.color.opacity(0.06))
+
+                Path { path in
+                    for index in item.values.indices {
+                        let point = CGPoint(
+                            x: xPosition(for: index, in: plotRect),
+                            y: yPosition(for: item.values[index], in: plotRect)
+                        )
+                        if index == item.values.startIndex {
+                            path.move(to: point)
+                        } else {
+                            path.addLine(to: point)
+                        }
+                    }
+                }
+                .stroke(item.color, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+            }
+        }
+    }
+
+    private func xPosition(for index: Int, in plotRect: CGRect) -> CGFloat {
+        guard bucketCount > 1 else { return plotRect.midX }
+        return plotRect.minX + CGFloat(index) / CGFloat(bucketCount - 1) * plotRect.width
+    }
+
+    private func yPosition(for value: Double, in plotRect: CGRect) -> CGFloat {
+        let clamped = max(0, min(value / maximum, 1))
+        return plotRect.maxY - CGFloat(clamped) * plotRect.height
     }
 }
 

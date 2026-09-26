@@ -146,10 +146,10 @@ public struct PluginExecutor: Sendable {
         if outputBuffer.exceededLimit {
             return failed(configuration: configuration, displayName: displayName, message: text(.outputTooLarge, language: language))
         }
+        if wasCancelled || Task.isCancelled {
+            return failed(configuration: configuration, displayName: displayName, message: text(.cancelled, language: language))
+        }
         if !finished {
-            if wasCancelled {
-                return failed(configuration: configuration, displayName: displayName, message: text(.cancelled, language: language))
-            }
             return failed(configuration: configuration, displayName: displayName, message: text(.timeout, language: language))
         }
 

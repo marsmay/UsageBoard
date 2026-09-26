@@ -295,7 +295,7 @@ final class UsageBoardStore: ObservableObject {
             || original.metadata != updated.metadata
         if executionChanged {
             updated.stateID = UUID().uuidString
-            discardStateCache(stateID: original.stateID)
+            discardStateCache(stateID: original.stateID, after: inflightRefreshTasks[original.id])
         }
         configuration.plugins[index] = updated
         if executionChanged {
@@ -307,9 +307,11 @@ final class UsageBoardStore: ObservableObject {
     }
 
     /// stateID 轮换或插件删除后清理旧缓存文件，防止 states/ 累积孤儿文件。
-    private func discardStateCache(stateID: String) {
+    private func discardStateCache(stateID: String, after refresh: Task<Void, Never>?) {
         let stateStore = stateStore
         Task.detached(priority: .utility) {
+            // 刷新可能已进入独立的缓存写入任务；取消刷新后仍须等其写入结束。
+            await refresh?.value
             stateStore.remove(stateID: stateID)
         }
     }
@@ -393,7 +395,7 @@ final class UsageBoardStore: ObservableObject {
 
     func removePlugin(id: UUID) {
         guard let index = configuration.plugins.firstIndex(where: { $0.id == id }) else { return }
-        discardStateCache(stateID: configuration.plugins[index].stateID)
+        discardStateCache(stateID: configuration.plugins[index].stateID, after: inflightRefreshTasks[id])
         configuration.plugins.remove(at: index)
         snapshots.removeValue(forKey: id)
         refreshTasks[id]?.cancel()

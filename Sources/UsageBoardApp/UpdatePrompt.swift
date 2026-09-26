@@ -218,4 +218,3 @@ struct UpdatePromptView: View {
         .onChange(of: info) { _ in didStartUpdate = false }
     }
 }
-

@@ -88,7 +88,7 @@ from _common import (  # noqa: E402
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CACHE_VERSION = 6
+CACHE_VERSION = 7  # 重建可能被旧 mtime 预过滤漏计的历史缓存。
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 PARSE_ERROR = "parse_error"
 REQUEST_TIMEOUT = "request_timeout"
@@ -322,10 +322,8 @@ def maintain_cache(data_dir):
 
     def full_scan_and_save():
         scan_start_utc = datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=timezone.utc) - timedelta(hours=14)
-        # 与增量路径一致按 mtime 预过滤：重度用户的 projects 目录可达数百 MB，
-        # 冷启动全量逐行解析成本高；parse_records 内的时间过滤仍是权威，不会漏数据。
-        files = filter_by_mtime(all_jsonl_files(data_dir), scan_start_utc.timestamp())
-        records = parse_records(files, scan_start_utc, now)
+        # 全量重建以记录时间为准，导入的日志可能保留与内容不一致的旧 mtime。
+        records = parse_records(all_jsonl_files(data_dir), scan_start_utc, now)
         by_day = group_by_local_date(records)
         days = {d: by_day.get(d, {}) for d in
                 (_format_date(cutoff + timedelta(days=i)) for i in range(30))

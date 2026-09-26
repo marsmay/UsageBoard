@@ -15,14 +15,7 @@ struct PluginSettingsView: View {
     }
 
     private var hasChanges: Bool {
-        guard let id = selectedPluginID,
-              let original = store.configuration.plugins.first(where: { $0.id == id }),
-              let draft else { return false }
-        return draft.name != original.name
-            || draft.executablePath != original.executablePath
-            || draft.refreshIntervalSeconds != original.refreshIntervalSeconds
-            || draft.parameterValues != original.parameterValues
-            || draft.metadata != original.metadata
+        UnsavedChangesBroker.hasChanges(draft, store: store)
     }
 
     private var filteredPlugins: [PluginConfiguration] {
@@ -201,10 +194,6 @@ struct PluginSettingsView: View {
             } else if let id = store.configuration.plugins.first?.id {
                 loadDraft(for: id)
             }
-            unsavedChanges.handler = { resolveUnsavedChanges() }
-        }
-        .onDisappear {
-            unsavedChanges.handler = nil
         }
     }
 
@@ -224,10 +213,7 @@ struct PluginSettingsView: View {
 
     @discardableResult
     private func saveDraft() -> Bool {
-        // 路径变化时 updatePlugin 内部会统一重载 metadata，无需在此预解析。
-        guard let draft, store.updatePlugin(draft) else { return false }
-        self.draft = store.configuration.plugins.first(where: { $0.id == draft.id })
-        return true
+        UnsavedChangesBroker.save($draft, store: store)
     }
 
     private func selectPlugin(_ id: UUID) {
@@ -237,20 +223,7 @@ struct PluginSettingsView: View {
     }
 
     private func resolveUnsavedChanges() -> Bool {
-        if hasChanges {
-            let alert = NSAlert()
-            alert.messageText = strings.text(.unsavedChanges)
-            alert.addButton(withTitle: strings.text(.save))
-            alert.addButton(withTitle: strings.text(.discardChanges))
-            alert.addButton(withTitle: strings.text(.cancel))
-            switch alert.runModal() {
-            case .alertFirstButtonReturn:
-                guard saveDraft() else { return false }
-            case .alertSecondButtonReturn: break
-            default: return false
-            }
-        }
-        return true
+        unsavedChanges.resolve($draft, store: store)
     }
 
     private func reloadDraftMetadata() {

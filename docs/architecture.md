@@ -67,11 +67,11 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
-Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
+Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；缓存版本 7 会重建旧版本可能漏计的历史数据。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
 
 配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
 
-`PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据，旧 stateID 的磁盘与内存缓存在后台清理；删除插件同样清理。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式，以 `~` 开头的路径直接报错拒绝；插件参数是否展开路径由插件自身决定。
+`PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据，旧 stateID 的磁盘与内存缓存在旧刷新（包括已开始的缓存写入）结束后后台清理；删除插件同样清理。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式，以 `~` 开头的路径直接报错拒绝；插件参数是否展开路径由插件自身决定。
 
 文件选择器会解析符号链接返回真实路径；addPlugin 与 updatePlugin 统一经 `canonicalExecutablePath` 归一：所选文件与 `plugins/` 目录内同名链接目标一致时改存链接路径本身，app 包迁移或重建后安装器重新指向新包时配置中的执行路径保持有效。
 
@@ -169,12 +169,13 @@ App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSSt
 
 图表由 `TokenChartView.swift` 的 TokenUsageChartView 组织摘要、选择状态和模式，TokenLineChartPlot / TokenBarChartPlot 绘制：
 
+- 派生数据在视图初始化时完整建立，chart 或 language 变化时更新；首帧即可安全读取总量，hover 复用已有数据。折线路径与柱状分段布局使用等值子视图隔离，数据/尺寸/比例不变时不随 hover 重建；指示线与柱高亮单独更新。
 - 选择摘要可只展示总量或某一分项，再次选择恢复全部。
 - 直方图只堆叠分项，避免把总量重复相加；仅有总量时回退总量，堆叠顺序与图例一致。
 - 图表绘图区高 170 pt，支持横向滚动；纵轴刻度由共享 TokenChartAxisScale 计算，选择易读步长。
 - hover 提示在滚动视口外层渲染，结合内容偏移换算桶，防止滚动后错位和长提示裁剪；未选择单项时过滤零值分项，空桶仍保留总量；选择单项时保留该项，即使当前桶为零。
 
-设置页使用通用/插件/关于三栏。通用页的主题、显示模式、图表模式、语言与插件 choice 参数共用 SettingsSegments；显式设置 selectedSegmentBezelColor 为系统强调色，避免不同 SDK 兼容外观下选中态退回白色。插件草稿由 SettingsView 持有，切换栏目保留；切换或新增插件前处理未保存编辑。保存通过 Store.updatePlugin 校验路径、重载路径变化后的 metadata/defaultValue，并校验已启用插件必填参数。启用/禁用与拖拽排序即时生效。插件列表使用 macOS 原生 List 选择与 onMove 排序，避免行内选择 Button 拦截拖拽；由 Store 一次更新配置、快照和持久化；搜索时仅重排可见插件所在位置，隐藏插件位置不变。choice 使用原生 NSSegmentedControl 的等宽分段与系统强调色选中态，通过 AppKit intrinsicContentSize 在首帧测量；ViewThatFits 按可用宽度选择分段或菜单，长选项回退菜单。
+设置页使用通用/插件/关于三栏。通用页的主题、显示模式、图表模式、语言与插件 choice 参数共用 SettingsSegments；显式设置 selectedSegmentBezelColor 为系统强调色，避免不同 SDK 兼容外观下选中态退回白色。插件草稿由 SettingsView 持有，切换栏目保留；关闭保护在整个设置窗口生命周期内有效，不随插件页退出而注销。切换、新增或删除插件以及关闭设置窗口前处理未保存编辑，保存校验失败会阻止继续；删除另需确认。保存通过 Store.updatePlugin 校验路径、重载路径变化后的 metadata/defaultValue，并校验已启用插件必填参数。启用/禁用与拖拽排序即时生效。插件列表使用 macOS 原生 List 选择与 onMove 排序，避免行内选择 Button 拦截拖拽；由 Store 一次更新配置、快照和持久化；搜索时仅重排可见插件所在位置，隐藏插件位置不变。choice 使用原生 NSSegmentedControl 的等宽分段与系统强调色选中态，通过 AppKit intrinsicContentSize 在首帧测量；ViewThatFits 按可用宽度选择分段或菜单，长选项回退菜单。
 
 AppTheme 枚举定义在 Core 的 AppConfiguration.swift；App 层扩展映射 NSAppearance。主题立即持久化，并更新 NSApp、已有 popover 和 hosting view；system 清除外观覆盖以继承系统设置。
 
@@ -192,7 +193,7 @@ BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径�
 
 检查和下载要求 HTTPS、无 URL 用户凭据以及成功 HTTP 状态，重定向最终 URL 也校验。Store 分别维护检查/安装忙碌状态。回滚判断基于脚本命令退出状态，不等于新 app 启动后的健康检查。当前下载限制不构成解压配额；仍未实施解压过程体积上限或独立发布者认证，发布及替换继续使用 ad-hoc 签名。
 
-`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 等待旧实例退出后构建 release 并启动；首次创建 bundle 使用 0.1.0，已有版本保留。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
+`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 每 0.2 秒检查旧实例是否退出，最多等待 10 秒，超时中止而不覆盖运行中的 bundle；退出后构建 release 并启动；首次创建 bundle 使用 0.1.0，已有版本保留。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
 
 `scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；build 号默认取 UTC `%y%j%H%M`（年+年积日+时+分），可用 APP_BUILD 覆盖。更新说明使用第二个参数，否则取最新本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它生成 ZIP/version.json（含 `latestVersion`、`latestBuild`、`downloadURL`、`notes`）并保留远端最近三个 ZIP，不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；操作步骤见 README 和项目指引。关于页显示 `版本 (build)` 供核对。
 

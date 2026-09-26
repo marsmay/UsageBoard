@@ -22,11 +22,54 @@ enum SettingsTab: CaseIterable, Identifiable {
 
 // MARK: - Main Settings View
 
-/// 让 AppDelegate 的 windowShouldClose 能询问 SwiftUI 内部的未保存草稿状态。
-/// handler 由 PluginSettingsView 在 onAppear/onDisappear 间注册；返回 false 表示取消关闭。
+/// 关闭保护与整个设置窗口同寿命，切换栏目不会注销草稿检查。
 @MainActor
 final class UnsavedChangesBroker {
     var handler: (@MainActor () -> Bool)?
+
+    enum Choice { case save, discard, cancel }
+
+    static func hasChanges(_ draft: PluginConfiguration?, store: UsageBoardStore) -> Bool {
+        guard let draft,
+              let original = store.configuration.plugins.first(where: { $0.id == draft.id }) else { return false }
+        return draft.name != original.name
+            || draft.executablePath != original.executablePath
+            || draft.refreshIntervalSeconds != original.refreshIntervalSeconds
+            || draft.parameterValues != original.parameterValues
+            || draft.metadata != original.metadata
+    }
+
+    static func save(_ draft: Binding<PluginConfiguration?>, store: UsageBoardStore) -> Bool {
+        guard let value = draft.wrappedValue, store.updatePlugin(value) else { return false }
+        draft.wrappedValue = store.configuration.plugins.first(where: { $0.id == value.id })
+        return true
+    }
+
+    func resolve(_ draft: Binding<PluginConfiguration?>, store: UsageBoardStore,
+                 choose: @MainActor () -> Choice = UnsavedChangesBroker.prompt) -> Bool {
+        guard Self.hasChanges(draft.wrappedValue, store: store) else { return true }
+        switch choose() {
+        case .save: return Self.save(draft, store: store)
+        case .discard:
+            draft.wrappedValue = store.configuration.plugins.first(where: { $0.id == draft.wrappedValue?.id })
+            return true
+        case .cancel: return false
+        }
+    }
+
+    private static func prompt() -> Choice {
+        let strings = AppLocalization.shared
+        let alert = NSAlert()
+        alert.messageText = strings.text(.unsavedChanges)
+        alert.addButton(withTitle: strings.text(.save))
+        alert.addButton(withTitle: strings.text(.discardChanges))
+        alert.addButton(withTitle: strings.text(.cancel))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .save
+        case .alertSecondButtonReturn: return .discard
+        default: return .cancel
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -91,6 +134,12 @@ struct SettingsView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            unsavedChanges.handler = { unsavedChanges.resolve($pluginDraft, store: store) }
+        }
+        .onDisappear {
+            unsavedChanges.handler = nil
+        }
     }
 
     // MARK: Sidebar

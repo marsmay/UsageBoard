@@ -179,7 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // 有未保存的插件草稿时先询问；handler 由 PluginSettingsView 注册，不在插件页时为 nil。
+        // 有未保存的插件草稿时先询问；handler 由 SettingsView 注册，切换栏目仍保留检查。
         guard settingsUnsavedChanges.handler?() ?? true else { return false }
         return true
     }

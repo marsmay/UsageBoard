@@ -288,8 +288,8 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
         with open(path, "a") as f:
             f.write(json.dumps(record) + "\n")
 
-    def test_full_scan_prefilters_files_by_mtime(self):
-        # 冷启动全量路径同样按 mtime 预过滤；解析器内部的时间过滤仍是权威。
+    def test_full_scan_keeps_recent_records_regardless_of_mtime(self):
+        # 全量扫描以记录时间为准，旧 mtime 不能遮蔽近期记录。
         with tempfile.TemporaryDirectory() as tmp:
             projects = os.path.join(tmp, "projects", "p1")
             os.makedirs(projects)
@@ -297,7 +297,7 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
             stale = os.path.join(projects, "stale.jsonl")
             now = datetime.now().astimezone()
             self._write_jsonl(recent, now.isoformat(), "claude-sonnet", 33)
-            # 旧 mtime 文件内即使有近期时间戳的记录也不得进入解析（预过滤语义）。
+            # 导入后保留旧 mtime 的近期记录仍应计入统计。
             self._write_jsonl(stale, now.isoformat(), "claude-sonnet", 500)
             import time as _time
             old_ts = _time.time() - 40 * 86400
@@ -305,7 +305,23 @@ class TestMaintainCacheRefreshesToday(unittest.TestCase):
 
             result = plugin.maintain_cache(tmp)  # 无缓存 → 全量路径
             today_str = datetime.now().strftime("%Y-%m-%d")
-            self.assertEqual(result.get(today_str, {}).get("claude-sonnet", {}).get("output", 0), 33)
+            self.assertEqual(result.get(today_str, {}).get("claude-sonnet", {}).get("output", 0), 533)
+
+    def test_previous_cache_version_rebuilds_records_with_old_mtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = os.path.join(tmp, "projects", "p1")
+            os.makedirs(projects)
+            path = os.path.join(projects, "imported.jsonl")
+            yesterday = datetime.now().astimezone() - timedelta(days=1)
+            self._write_jsonl(path, yesterday.isoformat(), "claude-sonnet", 500)
+            old_ts = (yesterday - timedelta(days=40)).timestamp()
+            os.utime(path, (old_ts, old_ts))
+            plugin.save_stats_cache(tmp, {
+                "version": 6, "last_date": datetime.now().strftime("%Y-%m-%d"), "days": {}
+            })
+            result = plugin.maintain_cache(tmp)
+            self.assertEqual(result[yesterday.strftime("%Y-%m-%d")]["claude-sonnet"]["output"], 500)
+            self.assertEqual(plugin.load_stats_cache(tmp)["version"], plugin.CACHE_VERSION)
 
     def test_vanished_files_are_skipped_during_incremental_scan(self):
         # glob 与 getmtime 之间被 Claude Code 轮转删除的文件必须跳过，不得让整个插件失败。

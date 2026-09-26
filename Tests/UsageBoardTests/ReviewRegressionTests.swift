@@ -74,6 +74,33 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 3)
     }
 
+    func testCancellationWinsOverSuccessfulSIGTERMExit() async throws {
+        let root = try temporaryDirectory()
+        let script = root.appendingPathComponent("cancel.py")
+        let marker = root.appendingPathComponent("started")
+        try """
+        import signal, sys, pathlib, time, json
+        def stop(*args):
+            print(json.dumps({'updatedAt':'2026-09-26T00:00:00Z','items':[]}))
+            sys.exit(0)
+        signal.signal(signal.SIGTERM, stop)
+        pathlib.Path(__file__).with_name('started').touch()
+        time.sleep(30)
+        """.write(to: script, atomically: true, encoding: .utf8)
+        let task = Task.detached {
+            PluginExecutor(timeoutSeconds: 30).run(configuration: .init(name: "Test", executablePath: script.path),
+                                                  displayName: "Test", language: .en)
+        }
+        defer { task.cancel() }
+        for _ in 0..<200 where !FileManager.default.fileExists(atPath: marker.path) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
+        task.cancel()
+        let result = await task.value
+        XCTAssertEqual(result.state, .failed("Plugin execution cancelled"))
+    }
+
     func testUpdateRejectsHTTPFailuresAndInsecureURLs() throws {
         let secure = URL(string: "https://example.com/update.zip")!
         XCTAssertNoThrow(try UpdateChecker.validateURL(secure))

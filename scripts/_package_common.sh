@@ -2,7 +2,7 @@
 # build.sh 与 release.sh 的公共打包逻辑。被 source 使用，不独立执行。
 # 调用方需先设置：PROJECT_DIR、DIST_DIR、APP_BUNDLE、PLIST、UPDATE_CHECK_URL、APP_BUILD。
 
-# 版本号必须是点分整数（1-3 段），否则在线更新的点分整数比较会失效。
+# 版本号必须是点分整数（2-3 段），否则在线更新的点分整数比较会失效。
 validate_version() {
     local version="$1"
     if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
@@ -32,13 +32,13 @@ ensure_info_plist() {
     fi
 }
 
-# 等待旧实例退出（pkill 只发信号不同步）；超时后继续，复制失败会自行报错。
+# 最多等待 10 秒；旧实例未退出时中止，避免覆盖仍在运行的 bundle。
 wait_for_app_exit() {
     local waited=0
     while pgrep -x UsageBoard >/dev/null 2>&1; do
-        if [ "$waited" -ge 10 ]; then
-            echo "警告: 等待 UsageBoard 退出超时，继续执行" >&2
-            return
+        if [ "$waited" -ge 50 ]; then
+            echo "错误: 等待 UsageBoard 退出超时，停止构建" >&2
+            return 1
         fi
         sleep 0.2
         waited=$((waited + 1))

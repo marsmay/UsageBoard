@@ -40,7 +40,7 @@ UsageBoard is a native macOS menu bar app that aggregates quotas, balances, and 
 - Token usage charts switch between line and stacked bar modes.
 - Manual, scheduled (per-plugin interval), and per-card refresh; scheduled refresh pauses during system sleep and resumes on wake.
 - Plugin data is cached to disk by `stateID`; the last successful data is shown on launch. A plugin can report failure as `{"error": "…"}`, shown directly in the card body.
-- Settings forms are generated from script metadata, including segmented controls and directory/file pickers; new plugins are disabled by default and required parameters are validated before enabling.
+- Settings forms are generated from script metadata, including segmented controls and directory/file pickers; new plugins are disabled by default and required parameters are validated before enabling. Plugin drafts survive settings tab changes; closing settings offers Save, Discard, or Cancel, and removing a plugin requires confirmation.
 - Light, dark, or system theme applied immediately; bundled plugin icons work offline and follow the theme.
 - Chinese and English UI; settings fields support standard editing shortcuts (⌘Z / ⇧⌘Z / ⌘X / ⌘C / ⌘V / ⌘A).
 - Optional launch at login; background update checks every 6 hours, with a capsule at the top of the popover for new versions and a non-modal panel for download and installation.

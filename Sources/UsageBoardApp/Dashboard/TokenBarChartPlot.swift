@@ -102,16 +102,10 @@ struct TokenBarChartPlot: View {
         let total = values.reduce(0, +)
         let height = yHeight(for: total, in: plotRect)
 
-        return VStack(spacing: 0) {
-            ForEach(Array(series.enumerated()), id: \.element.id) { seriesIndex, item in
-                Rectangle()
-                    .fill(item.color)
-                    .frame(height: total > 0 ? height * values[seriesIndex] / total : 0)
-            }
-        }
-        .frame(width: barWidth(in: plotRect), height: height, alignment: .top)
-        .clipShape(RoundedRectangle(cornerRadius: min(3, barWidth(in: plotRect) / 2), style: .continuous))
-        .position(x: xPosition(for: index, in: plotRect), y: plotRect.maxY - height / 2)
+        return TokenStackedBarDrawing(colors: series.map(\.color), values: values,
+                                      total: total, width: barWidth(in: plotRect), height: height)
+            .equatable()
+            .position(x: xPosition(for: index, in: plotRect), y: plotRect.maxY - height / 2)
     }
 
     private func hoverIndicator(index: Int, in plotRect: CGRect) -> some View {
@@ -157,5 +151,26 @@ struct TokenBarChartPlot: View {
     private func valueAt(_ index: Int, in series: TokenChartSeries) -> Double {
         guard series.values.indices.contains(index) else { return 0 }
         return max(series.values[index], 0)
+    }
+}
+
+// Hover changes opacity outside this view, without rebuilding every segment's layout.
+private struct TokenStackedBarDrawing: View, Equatable {
+    var colors: [Color]
+    var values: [Double]
+    var total: Double
+    var width: CGFloat
+    var height: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(values.indices, id: \.self) { index in
+                Rectangle()
+                    .fill(colors[index])
+                    .frame(height: total > 0 ? height * values[index] / total : 0)
+            }
+        }
+        .frame(width: width, height: height, alignment: .top)
+        .clipShape(RoundedRectangle(cornerRadius: min(3, width / 2), style: .continuous))
     }
 }

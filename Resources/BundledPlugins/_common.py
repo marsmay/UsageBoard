@@ -176,7 +176,10 @@ def run_query(fetch: Any, translate: Any, language: str) -> Any:
     JSON, so callers do `payload = run_query(...); if payload is None: return 0`.
     """
     try:
-        return fetch()
+        payload = fetch()
+        if payload is None:
+            failure(translate(language, "usage_parse_failed"))
+        return payload
     except urllib.error.HTTPError as error:
         handle_http_error(error, translate, language)
     except urllib.error.URLError as error:
