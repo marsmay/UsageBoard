@@ -148,7 +148,6 @@ struct AppLocalization {
         case .scriptPathPlaceholder: return "Python script path"
         case .refreshInterval: return "Refresh"
         case .seconds: return "seconds"
-        case .refreshIntervalMinimum: return "min 5s"
         case .pluginParameters: return "Plugin Parameters"
         case .noParameterMetadata: return "No plugin parameter metadata found"
         case .noPluginsTitle: return "No Plugins"
@@ -237,7 +236,6 @@ struct AppLocalization {
         case .scriptPathPlaceholder: return "Python 脚本路径"
         case .refreshInterval: return "刷新间隔"
         case .seconds: return "秒"
-        case .refreshIntervalMinimum: return "最低 5 秒"
         case .pluginParameters: return "插件参数"
         case .noParameterMetadata: return "未读取到插件参数元数据"
         case .noPluginsTitle: return "暂无插件"
@@ -325,7 +323,6 @@ struct AppLocalization {
         case scriptPathPlaceholder
         case refreshInterval
         case seconds
-        case refreshIntervalMinimum
         case pluginParameters
         case noParameterMetadata
         case noPluginsTitle

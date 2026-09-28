@@ -78,9 +78,6 @@ struct PluginSettingsCard: View {
                             .frame(width: 80)
                         Text(strings.text(.seconds))
                             .foregroundStyle(.secondary)
-                        Text(strings.text(.refreshIntervalMinimum))
-                            .font(UB.Font.caption2)
-                            .foregroundStyle(.tertiary)
                     }
                 }
             }
