@@ -514,6 +514,46 @@ class TestComputeTokens(unittest.TestCase):
 class TestParseRecordsReturnsBreakdown(unittest.TestCase):
     """parse_records returns raw 4-field breakdown, not pre-summed total."""
 
+    def test_partial_cache_breakdown_does_not_hide_aggregate(self):
+        for nested in ({}, {"ephemeral_1h_input_tokens": 20}):
+            with self.subTest(nested=nested):
+                self.assertEqual(plugin._cache_creation_tokens({
+                    "cache_creation_input_tokens": 100, "cache_creation": nested,
+                }), 100)
+
+    def test_complete_usage_replaces_larger_streaming_estimate_in_either_order(self):
+        estimate = {"stop_reason": None, "usage": {"input_tokens": 1000, "output_tokens": 0}}
+        final = {"stop_reason": "end_turn", "usage": {
+            "input_tokens": 10, "output_tokens": 20, "cache_read_input_tokens": 100,
+        }}
+        for messages in ([estimate, final], [final, estimate]):
+            with self.subTest(messages=messages), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "session.jsonl"
+                path.write_text("".join(json.dumps({
+                    "type": "assistant", "sessionId": "s", "timestamp": "2026-05-15T10:00:00Z",
+                    "message": {"id": "m", "model": "glm-5.3", **message},
+                }) + "\n" for message in messages))
+                records = plugin.parse_records([str(path)], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                               datetime(2026, 5, 16, tzinfo=timezone.utc))
+                self.assertEqual(sum(plugin.compute_tokens(r[2]) for r in records), 130)
+
+    def test_invalid_token_numbers_do_not_poison_totals(self):
+        for value in (True, -1, float("nan"), float("inf"), 1.5):
+            with self.subTest(value=value):
+                self.assertEqual(plugin._token_number(value), 0)
+
+    def test_corrupt_utf8_number_is_skipped_without_aborting_following_record(self):
+        record = json.dumps({
+            "type": "assistant", "timestamp": "2026-05-15T10:00:00Z",
+            "message": {"id": "m", "model": "glm-5.3", "usage": {"input_tokens": 100}},
+        }).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "session.jsonl"
+            path.write_bytes(record.replace(b'100', b'9\xff99') + b'\n' + record + b'\n')
+            records = plugin.parse_records([str(path)], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(sum(plugin.compute_tokens(r[2]) for r in records), 100)
+
     def test_breakdown_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
             jsonl = os.path.join(tmp, "session.jsonl")
@@ -541,7 +581,7 @@ class TestParseRecordsReturnsBreakdown(unittest.TestCase):
                 "input": 100, "output": 50, "cache_creation": 200, "cache_read": 9999,
             })
 
-    def test_streaming_frames_merge_valid_usage_by_field(self):
+    def test_requestless_streaming_blocks_at_different_timestamps_count_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             jsonl = os.path.join(tmp, "session.jsonl")
             frames = [
@@ -601,15 +641,240 @@ class TestParseRecordsReturnsBreakdown(unittest.TestCase):
             records = plugin.parse_records([jsonl], start, end)
 
         self.assertEqual(len(records), 1)
-        timestamp, model, breakdown = records[0]
-        self.assertEqual(timestamp, datetime(2026, 5, 15, 10, 1, tzinfo=timezone.utc))
-        self.assertEqual(model, "claude-sonnet-4-5")
-        self.assertEqual(breakdown, {
-            "input": 100,
-            "output": 50,
-            "cache_creation": 10,
-            "cache_read": 20,
-        })
+        self.assertEqual(plugin.compute_tokens(records[0][2]), 160)
+        self.assertEqual(records[0][2]["input"], 80)
+
+    def test_same_timestamp_rewrite_uses_largest_complete_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for input_tokens, output_tokens in [(100, 30), (90, 50)]:
+                    f.write(json.dumps({
+                        "type": "assistant", "sessionId": "s", "timestamp": "2026-05-15T10:00:00Z",
+                        "message": {"id": "m", "model": "glm-5.3", "usage": {
+                            "input_tokens": input_tokens, "output_tokens": output_tokens,
+                        }},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0][2]["input"], 90)
+        self.assertEqual(records[0][2]["output"], 50)
+
+    def test_glm_content_blocks_do_not_repeat_cached_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for second, kind in enumerate(("thinking", "text", "tool_use", "tool_use")):
+                    f.write(json.dumps({
+                        "type": "assistant", "sessionId": "s", "isSidechain": False,
+                        "timestamp": f"2026-05-15T10:00:0{second}Z",
+                        "message": {"id": "m", "model": "glm-5.3", "content": [{"type": kind}],
+                                    "usage": {"input_tokens": 1130, "output_tokens": 471,
+                                              "cache_read_input_tokens": 78016}},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(plugin.compute_tokens(records[0][2]), 79617)
+
+    def test_streaming_usage_keeps_first_timestamp_across_day_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for timestamp, output in [("2026-05-15T23:59:59Z", 1),
+                                          ("2026-05-16T00:00:01Z", 50)]:
+                    f.write(json.dumps({
+                        "type": "assistant", "sessionId": "s", "timestamp": timestamp,
+                        "message": {"id": "m", "model": "glm-5.3",
+                                    "usage": {"input_tokens": 100, "output_tokens": output}},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 15, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0][0], datetime(2026, 5, 15, 23, 59, 59, tzinfo=timezone.utc))
+        self.assertEqual(plugin.compute_tokens(records[0][2]), 150)
+
+    def test_request_id_dedupes_across_timestamps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for minute, tokens in [(0, 100), (1, 150)]:
+                    f.write(json.dumps({
+                        "type": "assistant", "requestId": "r", "sessionId": "s",
+                        "timestamp": f"2026-05-15T10:{minute:02}:00Z",
+                        "message": {"id": "m", "model": "glm-5.3",
+                                    "usage": {"input_tokens": tokens}},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0][2]["input"], 150)
+
+    def test_sidechain_replay_at_different_timestamps_is_one_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for minute, tokens in [(0, 100), (1, 200)]:
+                    f.write(json.dumps({
+                        "type": "assistant", "sessionId": "s", "isSidechain": True,
+                        "timestamp": f"2026-05-15T10:{minute:02}:00Z",
+                        "message": {"id": "m", "model": "glm-5.3",
+                                    "usage": {"input_tokens": tokens}},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0][2]["input"], 200)
+
+    def test_main_replay_replaces_sidechain_without_merging_later_main_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for minute, tokens, sidechain in [(0, 100, True), (1, 200, False),
+                                                  (2, 300, False)]:
+                    f.write(json.dumps({
+                        "type": "assistant", "sessionId": "s", "isSidechain": sidechain,
+                        "requestId": f"r-{minute}",
+                        "timestamp": f"2026-05-15T10:{minute:02}:00Z",
+                        "message": {"id": "m", "model": "glm-5.3",
+                                    "usage": {"input_tokens": tokens}},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual([r[2]["input"] for r in records], [200, 300])
+
+    def test_same_message_id_in_different_requests_or_sessions_is_not_collapsed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "session.jsonl")
+            with open(path, "w") as f:
+                for session, request in [("s1", None), ("s2", None),
+                                         ("s1", "r1"), ("s1", "r2")]:
+                    f.write(json.dumps({
+                        "type": "assistant", "sessionId": session, "requestId": request,
+                        "timestamp": "2026-05-15T10:00:00Z",
+                        "message": {"id": "m", "model": "glm-5.3",
+                                    "usage": {"input_tokens": 100}},
+                    }) + "\n")
+            records = plugin.parse_records([path], datetime(2026, 5, 14, tzinfo=timezone.utc),
+                                           datetime(2026, 5, 16, tzinfo=timezone.utc))
+        self.assertEqual(len(records), 4)
+        self.assertEqual(sum(plugin.compute_tokens(r[2]) for r in records), 400)
+
+
+class TestCostStateStats(unittest.TestCase):
+    def setUp(self):
+        self.ts = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+        self.day = self.ts.astimezone().date().isoformat()
+        self.now = self.ts + timedelta(hours=2)
+
+    def write_session(self, tmp, *, cross_day=False, classifier=False, stale=False):
+        root = Path(tmp) / "data"
+        path = root / "projects" / "project" / "s.jsonl"
+        path.parent.mkdir(parents=True)
+        work = Path(tmp) / "work"
+        work.mkdir()
+        message = {"type": "assistant", "sessionId": "s", "cwd": str(work),
+                   "timestamp": self.ts.isoformat(),
+                   "message": {"id": "m", "model": "glm-5.3", "usage": {
+                       "input_tokens": 100, "output_tokens": 10, "cache_read_input_tokens": 400}}}
+        snapshot = {"type": "cost-state", "sessionId": "s",
+                    "startTime": (self.ts - timedelta(days=int(cross_day))).timestamp() * 1000,
+                    "modelUsage": {"GLM-5.3(max)[1m]": {"inputTokens": 90 if stale else 150,
+                                                  "outputTokens": 10, "cacheReadInputTokens": 700}}}
+        path.write_text("\n".join(json.dumps(o) for o in (message, snapshot, snapshot)) + "\n")
+        os.utime(path, (self.ts.timestamp(), self.ts.timestamp()))
+        agent = path.with_suffix("") / "subagents" / "agent-a.jsonl"
+        agent.parent.mkdir(parents=True)
+        agent.write_text(json.dumps({**message, "isSidechain": True, "message": {
+            "id": "agent-m", "model": "glm-5.3", "usage": {"cache_read_input_tokens": 100}}}) + "\n")
+        if classifier:
+            (work / plugin.CLASSIFIER_LOG_FILENAME).write_text(json.dumps({
+                "ts": self.ts.timestamp() * 1000, "allowlisted": False,
+                "classifierSource": "local", "classifierModel": "glm-5.3(max)",
+                "inputTokens": 5, "outputTokens": 1,
+            }) + "\n")
+        daily = {self.day: {"glm-5.3": {"input": 100, "output": 10,
+                                      "cache_read": 500, "cache_creation": 0}}}
+        return root, path, daily
+
+    def test_saved_total_recovers_auxiliary_usage_without_recounting_agents_or_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(plugin, "utc_now", return_value=self.now):
+            root, path, daily = self.write_session(tmp)
+            copy = path.with_name("copy.jsonl")
+            # A file alias must not count a cumulative ledger twice.
+            os.link(path, copy)
+            result = plugin.add_cost_state_stats(daily, str(root))
+            self.assertEqual(plugin.compute_tokens(result[self.day]["glm-5.3"]), 860)
+            self.assertEqual(plugin.compute_tokens(daily[self.day]["glm-5.3"]), 610)
+            self.assertEqual(result, plugin.add_cost_state_stats(daily, str(root)))
+
+    def test_cross_day_classifier_overlap_and_stale_ledgers_are_not_added(self):
+        for options in ({"cross_day": True}, {"classifier": True}, {"stale": True}):
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as tmp, \
+                    patch.object(plugin, "utc_now", return_value=self.now):
+                root, _, daily = self.write_session(tmp, **options)
+                self.assertEqual(plugin.add_cost_state_stats(daily, str(root)), daily)
+
+    def test_different_mtime_date_cannot_date_an_untimestamped_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(plugin, "utc_now", return_value=self.now):
+            root, path, daily = self.write_session(tmp)
+            os.utime(path, (0, 0))
+            self.assertEqual(plugin.add_cost_state_stats(daily, str(root)), daily)
+
+    def test_incomplete_transcript_cannot_prove_same_day_supplement(self):
+        undated = json.dumps({"type": "assistant", "message": {
+            "id": "undated", "model": "glm-5.3", "usage": {"input_tokens": 20}}})
+        for line in (undated, '{"type":"assistant",', '["invalid-record"]'):
+            with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp, \
+                    patch.object(plugin, "utc_now", return_value=self.now):
+                root, path, daily = self.write_session(tmp)
+                with path.open("a") as stream:
+                    stream.write(line + "\n")
+                os.utime(path, (self.ts.timestamp(), self.ts.timestamp()))
+                self.assertEqual(plugin.add_cost_state_stats(daily, str(root)), daily)
+
+    def test_unreadable_subagent_cannot_prove_same_day_supplement(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(plugin, "utc_now", return_value=self.now):
+            root, path, daily = self.write_session(tmp)
+            agent = path.with_suffix("") / "subagents" / "agent-a.jsonl"
+            real_open = open
+
+            def open_without_agent(filename, *args, **kwargs):
+                if os.fspath(filename) == str(agent):
+                    raise PermissionError("unreadable subagent")
+                return real_open(filename, *args, **kwargs)
+
+            with patch("builtins.open", side_effect=open_without_agent):
+                self.assertEqual(plugin.add_cost_state_stats(daily, str(root)), daily)
+
+    def test_classifier_in_subagent_working_directory_also_prevents_double_counting(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(plugin, "utc_now", return_value=self.now):
+            root, path, daily = self.write_session(tmp, classifier=True)
+            child_work = Path(tmp) / "child-work"
+            child_work.mkdir()
+            log = Path(tmp) / "work" / plugin.CLASSIFIER_LOG_FILENAME
+            log.rename(child_work / plugin.CLASSIFIER_LOG_FILENAME)
+            agent = path.with_suffix("") / "subagents" / "agent-a.jsonl"
+            obj = json.loads(agent.read_text())
+            obj["cwd"] = str(child_work)
+            agent.write_text(json.dumps(obj) + "\n")
+            self.assertEqual(plugin.add_cost_state_stats(daily, str(root)), daily)
+
+    def test_cache_never_persists_supplement_and_removed_snapshot_is_reflected(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(plugin, "utc_now", return_value=self.now), \
+                patch.object(plugin, "local_today", return_value=self.day):
+            root, path, _ = self.write_session(tmp)
+            cold = plugin.maintain_cache(str(root))
+            self.assertEqual(plugin.compute_tokens(cold[self.day]["glm-5.3"]), 860)
+            self.assertEqual(cold, plugin.maintain_cache(str(root)))
+            cached = plugin.load_stats_cache(str(root))["days"]
+            self.assertEqual(plugin.compute_tokens(cached[self.day]["glm-5.3"]), 610)
+            path.write_text(path.read_text().splitlines()[0] + "\n")
+            os.utime(path, (self.ts.timestamp(), self.ts.timestamp()))
+            result = plugin.maintain_cache(str(root))
+            self.assertEqual(plugin.compute_tokens(result[self.day]["glm-5.3"]), 610)
 
 
 class TestClassifierStats(unittest.TestCase):
@@ -766,7 +1031,7 @@ class TestClassifierStats(unittest.TestCase):
             plugin.save_stats_cache(data, {"version": 7, "last_date": day, "days": {}})
             daily = plugin.maintain_cache(data)
             self.assertEqual(daily[day]["claude-sonnet-4-5"]["input"], 100)
-            self.assertEqual(plugin.load_stats_cache(data)["version"], 8)
+            self.assertEqual(plugin.load_stats_cache(data)["version"], plugin.CACHE_VERSION)
 
     def test_date_boundaries_and_unreadable_directories(self):
         with tempfile.TemporaryDirectory() as tmp:

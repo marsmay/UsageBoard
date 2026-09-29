@@ -69,9 +69,13 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
-Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；缓存版本 8 重建会话统计并收集所有记录中的绝对 `cwd`，持久化到 `classifier_dirs`，增量扫描继续补充目录。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
+Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；会话统计同时收集所有记录中的绝对 `cwd`，持久化到 `classifier_dirs`，增量扫描继续补充目录。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Claude/Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
 
 Claude classifier 使用客户端内部开关 `AUTOMODE_DECISION_LOG=1` 写出的工作目录 `.automode_decisions.jsonl`，无需服务或额外插件参数。插件仅检查缓存中已发现 cwd 下的固定文件名，不递归遍历项目；通过 device/inode 去除同一文件的路径别名。只累计 `allowlisted: false`、`classifierSource: local` 且有合法实际 token 的记录，按毫秒时间戳归属本地日期，与会话统计合并到同名模型。classifier 用量每次全量读取近 30 天，不写入会话 days 缓存，避免重复累加或删除日志后残留。无请求 ID，不对相同行做去重；损坏行、非法数值和未完成末行逐行跳过。无持久化会话无法保证发现 cwd；服务端 classifier 不追加，模型回退总量可能归到最终模型。这是 2.1.280 实测的内部日志格式，不保证其他版本或所有失败/取消路径完整覆盖。
+
+本地 token 解析参考 ccusage `5859497` 与 CodexBar `2db68ee`（2026-09-29 对照）。Claude 按消息/请求去重，无请求 ID 时按消息/会话合并流式块；完整 usage 优先于显式 `stop_reason: null`、无输出且无缓存字段的起始估算，随后优先主记录和较大的整份 usage，不拼接逐字段最大值。嵌套缓存创建字段完整时求和，缺项时优先回退聚合字段。仅计非负有限整数。日内 `cost-state` 补差在主会话、子代理和 classifier 统计之后独立重算，不写入会话缓存；只有 startTime、所有记录和 mtime 同日且模型可对应、无 classifier 重叠时补入正差，跨日快照不分摊；缺少消息时间、损坏记录或不可读子代理会使同日证明失效，跳过补差。
+
+Codex 优先使用累计 `total_tokens` 的正增量；缺少该字段时使用 input + output（不重复加 cached input / reasoning output），缺累计 usage 时使用 `last_token_usage` 并推进基线。有效累计值为零或不变时不重复加 last；累计回退保留高水位，后续累计值超过高水位时计入完整正差，不以 last 限制累计补回的用量。单文件相同时间/用量/模型事件及同 inode 文件别名去重；不跨独立请求按相同 token 数去重。首个 session_meta 的 `subagent_history_start_ordinal` 标记继承前缀，只保留其基线，只有非空继承前缀缺少累计基线时，首个自有事件才以 last 为上限；已有继承基线或前缀为空时保留完整累计增量。用量事件的 model 优先于 turn_context；前置无模型记录仍回填首个已知模型。无法确认的累计重置和跨文件复制历史仍有限制，不推测账户侧漏记请求。缓存版本由 Claude 11 / Codex 7 重建历史结果。
 
 配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
 

@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import glob
 import json
+import math
 import os
 import queue
 import re
@@ -89,7 +90,7 @@ CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credit
 CREDITS_TIMEOUT_SECONDS = 2.0
 # Leave time to serialize stdout before PluginExecutor's 15-second deadline.
 CREDITS_DEADLINE_SECONDS = 12.0
-CACHE_VERSION = 4
+CACHE_VERSION = 7  # Rebuild cumulative catch-up after stale counter regressions.
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 
 TRANSLATIONS = {
@@ -432,6 +433,26 @@ def collect_session_files(data_dir: str, start_date, end_date) -> list[str]:
     return result
 
 
+def usage_total(usage: Any) -> int | None:
+    """Cached input and reasoning output are subsets, not additional tokens."""
+    if not isinstance(usage, dict):
+        return None
+
+    def count(value: Any) -> int | None:
+        if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value >= 0 and value == int(value)):
+            return int(value)
+        return None
+
+    if "total_tokens" in usage:
+        return count(usage["total_tokens"])
+    input_tokens = count(usage.get("input_tokens"))
+    output_tokens = count(usage.get("output_tokens"))
+    if input_tokens is not None and output_tokens is not None:
+        return input_tokens + output_tokens
+    return None
+
+
 def parse_sessions_for_chart(
     files: list[str],
     buckets: list[datetime],
@@ -441,15 +462,29 @@ def parse_sessions_for_chart(
 ) -> dict[str, Any]:
     bucket_keys = {bucket_id(b, bucket_unit): {} for b in buckets}
     model_totals: dict[str, float] = {}
+    seen_files = set()
 
     for filepath in files:
+        try:
+            stat = os.stat(filepath)
+        except OSError:
+            continue
+        identity = (stat.st_dev, stat.st_ino)
+        if identity in seen_files:
+            continue
+        seen_files.add(identity)
         # token_count events may be written before the matching turn_context in
         # newer Codex logs (the first turn_context can appear hundreds of lines
         # in), so entries seen before any model is declared are buffered and
         # backfilled with the file's first declared model once known.
         first_model: str | None = None
         current_model: str | None = None
-        prev_total: float = 0.0
+        prev_total = 0
+        has_session_meta = False
+        seen_file_events = set()
+        subagent_start: int | None = None
+        has_inherited_total = False
+        first_owned = True
         pending: list[tuple[str, float]] = []
 
         def apply_entry(key: str, delta: float) -> None:
@@ -466,7 +501,8 @@ def parse_sessions_for_chart(
             # so splitting on b"\n" cannot split a multi-byte character.
             with open(filepath, "rb") as fh:
                 for raw_line in fh:
-                    if b'"turn_context"' not in raw_line and b'"token_count"' not in raw_line:
+                    if (b'"session_meta"' not in raw_line and b'"turn_context"' not in raw_line
+                            and b'"token_count"' not in raw_line):
                         continue
                     try:
                         line = raw_line.decode("utf-8")
@@ -476,10 +512,21 @@ def parse_sessions_for_chart(
                         event = json.loads(line)
                     except (json.JSONDecodeError, ValueError):
                         continue
+                    if not isinstance(event, dict):
+                        continue
 
                     kind = event.get("type")
                     payload = event.get("payload")
                     if not isinstance(payload, dict):
+                        continue
+
+                    if kind == "session_meta":
+                        if has_session_meta:
+                            continue  # Embedded ancestor metadata does not own this file.
+                        has_session_meta = True
+                        ordinal = payload.get("subagent_history_start_ordinal")
+                        if isinstance(ordinal, int) and not isinstance(ordinal, bool) and ordinal >= 0:
+                            subagent_start = ordinal
                         continue
 
                     if kind == "turn_context":
@@ -489,29 +536,62 @@ def parse_sessions_for_chart(
                                 first_model = model
                             current_model = model
 
-                    if payload.get("type") == "token_count":
+                    if kind == "event_msg" and payload.get("type") == "token_count":
                         info = payload.get("info")
                         if not isinstance(info, dict):
                             continue
-                        total_usage = info.get("total_token_usage")
-                        if not isinstance(total_usage, dict):
+                        total_tokens = usage_total(info.get("total_token_usage"))
+                        last_tokens = usage_total(info.get("last_token_usage"))
+                        if total_tokens is None and last_tokens is None:
                             continue
-                        total_tokens = total_usage.get("total_tokens")
-                        if not isinstance(total_tokens, (int, float)):
-                            continue
-                        total_tokens = float(total_tokens)
+                        model = normalize_model_name(payload.get("model")) or normalize_model_name(info.get("model"))
+                        if model:
+                            first_model = first_model or model
+                            current_model = model
 
-                        delta = max(total_tokens - prev_total, 0)
-                        if prev_total == 0.0:
-                            delta = total_tokens
-                        prev_total = total_tokens
+                        ordinal = event.get("ordinal")
+                        if (subagent_start is not None and isinstance(ordinal, int)
+                                and not isinstance(ordinal, bool) and ordinal < subagent_start):
+                            if total_tokens is not None:
+                                prev_total = max(prev_total, total_tokens)
+                                has_inherited_total = True
+                            continue
+
+                        # Keep a high-water mark: replayed lower totals must not lower
+                        # the baseline and make their later recovery look like usage.
+                        # Without a cumulative counter, ccusage/CodexBar use last usage.
+                        if total_tokens is None:
+                            delta = last_tokens
+                        else:
+                            delta = max(total_tokens - prev_total, 0)
+                        if subagent_start is not None and first_owned:
+                            # A compact fork can begin with an inherited total and no
+                            # earlier token row. Its last usage bounds the owned part.
+                            if subagent_start > 0 and not has_inherited_total and last_tokens is not None:
+                                delta = min(delta, last_tokens)
+                            first_owned = False
 
                         ts = payload.get("timestamp") or event.get("timestamp")
-                        if not (ts and delta > 0):
-                            continue
                         try:
-                            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone()
+                            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            dt = dt.astimezone()
                         except (ValueError, TypeError):
+                            # Keep a valid cumulative baseline even if attribution is lost.
+                            if total_tokens is not None:
+                                prev_total = max(prev_total, total_tokens)
+                            continue
+
+                        event_key = (dt, total_tokens, last_tokens, current_model)
+                        duplicate = event_key in seen_file_events
+                        if total_tokens is not None:
+                            prev_total = max(prev_total, total_tokens)
+                        elif event_key not in seen_file_events:
+                            prev_total += delta
+                        seen_file_events.add(event_key)
+
+                        if duplicate or delta <= 0:
                             continue
                         key = bucket_id(dt, bucket_unit)
                         if current_model is None:

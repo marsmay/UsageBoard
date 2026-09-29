@@ -89,7 +89,7 @@ from _common import (  # noqa: E402
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CACHE_VERSION = 8  # 重建会话工作目录索引，用于发现 classifier 决策日志。
+CACHE_VERSION = 11  # 重建缓存字段回退和不完整流式 usage 的历史统计。
 CACHE_FILENAME = ".usageboard-chart-cache.json"
 CLASSIFIER_LOG_FILENAME = ".automode_decisions.jsonl"
 PARSE_ERROR = "parse_error"
@@ -114,14 +114,17 @@ def compute_tokens(breakdown):
 
 
 def _token_number(value):
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value
+    if (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0 and value == int(value)):
+        return int(value)
     return 0
 
 
 def _cache_creation_tokens(usage):
     cache_creation = usage.get("cache_creation")
-    if isinstance(cache_creation, dict):
+    if (isinstance(cache_creation, dict)
+            and ("cache_creation_input_tokens" not in usage
+                 or all(key in cache_creation for key in ("ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens")))):
         return (
             _token_number(cache_creation.get("ephemeral_5m_input_tokens"))
             + _token_number(cache_creation.get("ephemeral_1h_input_tokens"))
@@ -226,30 +229,51 @@ def all_jsonl_files(data_dir):
     expanded = os.path.expanduser(data_dir)
     return glob.glob(os.path.join(expanded, "projects", "**", "*.jsonl"), recursive=True)
 
-def parse_records(files, start_dt, end_dt, project_dirs=None):
-    records_by_id = {}
+def parse_records(files, start_dt, end_dt, project_dirs=None, record_dates=None):
+    records = []
+    exact_indexes = {}
+    replay_indexes = {}
+    sidechain_indexes = {}
     for filepath in files:
         try:
-            with open(filepath, encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    line = line.strip()
+            with open(filepath, "rb") as f:
+                for raw_line in f:
+                    try:
+                        line = raw_line.decode("utf-8").strip()
+                    except UnicodeDecodeError:
+                        if record_dates is not None:
+                            record_dates.add(None)
+                        continue
                     if not line:
                         continue
                     try:
                         obj = json.loads(line)
                     except Exception:
+                        if record_dates is not None:
+                            record_dates.add(None)
                         continue
                     if not isinstance(obj, dict):
+                        if record_dates is not None:
+                            record_dates.add(None)
                         continue
                     cwd = obj.get("cwd")
                     if project_dirs is not None and isinstance(cwd, str) and os.path.isabs(cwd):
                         project_dirs.add(cwd)
+                    if record_dates is not None:
+                        if "timestamp" in obj:
+                            try:
+                                date_ts = datetime.fromisoformat(obj["timestamp"].replace("Z", "+00:00"))
+                                record_dates.add(date_ts.replace(tzinfo=date_ts.tzinfo or timezone.utc).astimezone().date())
+                            except (ValueError, TypeError, AttributeError):
+                                record_dates.add(None)
+                        elif obj.get("type") in ("assistant", "user"):
+                            record_dates.add(None)
                     if obj.get("type") != "assistant":
                         continue
-                    msg = obj.get("message", {})
-                    msg_id = msg.get("id")
-                    if not msg_id:
+                    msg = obj.get("message")
+                    if not isinstance(msg, dict):
                         continue
+                    msg_id = msg.get("id")
                     usage = msg.get("usage", {})
                     if not isinstance(usage, dict):
                         continue
@@ -272,20 +296,52 @@ def parse_records(files, start_dt, end_dt, project_dirs=None):
                         ts = ts.replace(tzinfo=timezone.utc)
 
                     model = normalize_model_name(msg.get("model")) or "unknown"
-                    existing = records_by_id.get(msg_id)
-                    if existing is None:
-                        records_by_id[msg_id] = [ts, model, breakdown]
+                    request_id = obj.get("requestId") or None
+                    session_id = obj.get("sessionId") or os.path.splitext(os.path.basename(filepath))[0]
+                    if any(value is not None and not isinstance(value, str)
+                           for value in (msg_id, request_id, session_id)):
                         continue
-
-                    if ts < existing[0]:
-                        existing[0] = ts
-                        existing[1] = model
-                    for key in ("input", "output", "cache_creation", "cache_read"):
-                        existing[2][key] = max(existing[2][key], breakdown[key])
+                    sidechain = obj.get("isSidechain") is True
+                    # CodexBar identifies cache-unaware proxy message_start estimates
+                    # narrowly; legacy records without stop_reason remain valid.
+                    incomplete = ("stop_reason" in msg and msg["stop_reason"] is None
+                                  and breakdown["input"] > 0 and breakdown["output"] == 0
+                                  and "cache_read_input_tokens" not in usage
+                                  and "cache_creation_input_tokens" not in usage
+                                  and "cache_creation" not in usage)
+                    route = (session_id, msg_id)
+                    # Content blocks from one response have different timestamps but
+                    # share message.id. Without requestId, time is not a request ID.
+                    exact = ((msg_id, request_id) if request_id else
+                             (msg_id, None, session_id)) if msg_id else None
+                    index = exact_indexes.get(exact) if exact is not None else None
+                    if index is None and msg_id:
+                        index = (replay_indexes if sidechain else sidechain_indexes).get(route)
+                        if not sidechain and index is not None and not records[index][3]:
+                            index = None
+                    candidate = (ts, model, breakdown, sidechain, incomplete)
+                    if index is None:
+                        index = len(records)
+                        records.append(candidate)
+                    else:
+                        existing = records[index]
+                        # Prefer actual usage, then the main record, then one whole
+                        # usage snapshot (never maxima assembled from different rows).
+                        rank = lambda row: (not row[4], not row[3], compute_tokens(row[2]))
+                        winner = candidate if rank(candidate) > rank(existing) else existing
+                        records[index] = (min(ts, existing[0]), *winner[1:])
+                    if exact is not None:
+                        exact_indexes.setdefault(exact, index)
+                        replay_indexes.setdefault(route, index)
+                        if sidechain:
+                            sidechain_indexes.setdefault(route, index)
         except Exception:
+            if record_dates is not None:
+                record_dates.add(None)
             continue
     return sorted(
-        (tuple(record) for record in records_by_id.values() if start_dt <= record[0] <= end_dt),
+        ((ts, model, breakdown) for ts, model, breakdown, _, _ in records
+         if start_dt <= ts <= end_dt),
         key=lambda record: record[0],
     )
 
@@ -375,6 +431,103 @@ def add_classifier_stats(daily, project_dirs):
                 target[key] = target.get(key, 0) + value
     return merged
 
+
+def add_cost_state_stats(daily, data_dir, earliest_day=None):
+    """Recover unlogged usage only when an entire saved session fits one local day.
+
+    cost-state includes auxiliary calls. It has no request timestamps or classifier
+    IDs, so cross-day sessions and models with classifier logs are left untouched.
+    Keep these adjustments out of the session cache: logs can change or disappear.
+    """
+    merged = {day: {model: dict(tokens) for model, tokens in models.items()}
+              for day, models in daily.items()}
+    now = utc_now()
+    session_files = {}
+    for path in glob.glob(os.path.join(os.path.expanduser(data_dir), "projects", "*", "*.jsonl")):
+        session_files.setdefault(os.path.splitext(os.path.basename(path))[0], []).append(path)
+    for file_session_id, paths in session_files.items():
+        if len(paths) != 1:
+            continue  # Imported copies may have different subsets of subagent logs.
+        path = paths[0]
+        try:
+            # This bound rejects old files before reading their transcript body.
+            modified_day = datetime.fromtimestamp(os.path.getmtime(path)).date().isoformat()
+            if modified_day not in merged or earliest_day is not None and modified_day < earliest_day:
+                continue
+            snapshot = None
+            with open(path, encoding="utf-8") as stream:
+                for line in stream:
+                    if '"cost-state"' not in line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        if isinstance(obj, dict) and obj.get("type") == "cost-state":
+                            snapshot = obj
+                    except (ValueError, TypeError):
+                        continue
+            if snapshot is None:
+                continue
+            day = datetime.fromtimestamp(snapshot["startTime"] / 1000).date()
+            key = day.isoformat()
+            # Mtime bounds the write of the untimestamped snapshot. A different
+            # date (including imported/touched files) cannot prove attribution.
+            if key not in merged or datetime.fromtimestamp(os.path.getmtime(path)).date() != day:
+                continue
+            session_id = snapshot.get("sessionId")
+            if not isinstance(session_id, str) or not session_id or session_id != file_session_id:
+                continue
+            models = snapshot.get("modelUsage")
+            if not isinstance(models, dict):
+                continue
+            dates = set()
+            directories = set()
+            start = datetime.combine(day, datetime.min.time()).astimezone(timezone.utc)
+            end = datetime.combine(day + timedelta(days=1), datetime.min.time()).astimezone(timezone.utc)
+            files = [path] + glob.glob(os.path.splitext(path)[0] + "/subagents/**/*.jsonl", recursive=True)
+            records = parse_records(files, datetime.min.replace(tzinfo=timezone.utc), now, directories, dates)
+            if dates != {day} or not directories:
+                continue
+            classifier_models = {model.casefold() for ts, model, _ in classifier_records(directories, start, end)
+                                 if ts < end}
+            logged = group_by_local_date(records).get(key, {})
+            logged_names = {model.casefold(): model for model in logged}
+            saved = {}
+            for raw_model, usage in models.items():
+                if not isinstance(usage, dict):
+                    raise ValueError("invalid cost-state usage")
+                # The cost ledger stores configured model names; API messages
+                # omit Claude Code's context-window selection suffix.
+                model = normalize_model_name(raw_model.removesuffix("[1m]"))
+                if not model:
+                    continue
+                model = logged_names.get(model.casefold())
+                if model is None:
+                    continue  # An unknown configured alias cannot identify an API model.
+                target = saved.setdefault(model, {})
+                for field, source in (("input", "inputTokens"), ("output", "outputTokens"),
+                                      ("cache_creation", "cacheCreationInputTokens"),
+                                      ("cache_read", "cacheReadInputTokens")):
+                    value = usage.get(source, 0)
+                    if (isinstance(value, bool) or not isinstance(value, (int, float))
+                            or not math.isfinite(value) or value < 0 or value != int(value)):
+                        raise ValueError("invalid cost-state token count")
+                    target[field] = target.get(field, 0) + int(value)
+            for model, usage in saved.items():
+                if model.casefold() in classifier_models:
+                    continue
+                difference = {field: value - logged.get(model, {}).get(field, 0)
+                              for field, value in usage.items()}
+                if any(value < 0 for value in difference.values()):
+                    continue  # A stale or reset ledger cannot replace newer transcript usage.
+                if compute_tokens(difference) <= 0:
+                    continue
+                target = merged[key].setdefault(model, {})
+                for field, value in difference.items():
+                    target[field] = target.get(field, 0) + value
+        except (OSError, ValueError, TypeError, KeyError, OverflowError):
+            continue
+    return merged
+
 # ─── Stats cache ──────────────────────────────────────────────────────────────
 
 def _cache_path(data_dir):
@@ -394,10 +547,11 @@ def _parse_date(s):
 def _format_date(d):
     return d.strftime("%Y-%m-%d")
 
-def maintain_cache(data_dir):
+def maintain_cache(data_dir, stat_days=30):
     """Cache session usage and cwd discovery; merge live classifier totals on return."""
     today = _parse_date(local_today())
     cutoff = today - timedelta(days=29)
+    supplement_start = _format_date(today - timedelta(days=stat_days - 1))
 
     cache = load_stats_cache(data_dir)
     now = utc_now()
@@ -417,7 +571,7 @@ def maintain_cache(data_dir):
             "days": days,
             "classifier_dirs": sorted(project_dirs),
         })
-        return add_classifier_stats(days, project_dirs)
+        return add_cost_state_stats(add_classifier_stats(days, project_dirs), data_dir, supplement_start)
 
     if cache is None or not isinstance(cache.get("classifier_dirs", []), list):
         return full_scan_and_save()
@@ -462,7 +616,7 @@ def maintain_cache(data_dir):
         "days": merged,
         "classifier_dirs": sorted(project_dirs),
     })
-    return add_classifier_stats(merged, project_dirs)
+    return add_cost_state_stats(add_classifier_stats(merged, project_dirs), data_dir, supplement_start)
 
 # ─── Chart ────────────────────────────────────────────────────────────────────
 
@@ -511,7 +665,7 @@ def main():
         if not os.path.isdir(os.path.expanduser(data_dir)):
             failure(translate(lang, "no_data_dir"))
             return
-        daily = maintain_cache(data_dir)
+        daily = maintain_cache(data_dir, {"7d": 7, "15d": 15, "30d": 30}.get(stat_period, 7))
         chart = build_chart(params, daily, lang, translate)
 
     if plan == "none":

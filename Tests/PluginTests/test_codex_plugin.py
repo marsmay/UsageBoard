@@ -433,6 +433,95 @@ class TestParseSessionsForChart(unittest.TestCase):
 
         self.assertEqual(self._parse_events(events), 120)
 
+    def test_component_only_usage_counts_input_output_without_subsets(self):
+        self.assertEqual(self._parse_events([self._token_event({
+            "input_tokens": 100, "output_tokens": 20,
+            "cached_input_tokens": 80, "reasoning_output_tokens": 10,
+        })]), 120)
+
+    def test_last_only_usage_advances_baseline_before_cumulative_returns(self):
+        last_only = self._token_event(None, {"input_tokens": 100, "output_tokens": 20})
+        self.assertEqual(self._parse_events([last_only, last_only]), 120)
+        self.assertEqual(self._parse_events([
+            last_only, last_only,
+            self._token_event({"total_tokens": 150}, {"total_tokens": 30}),
+        ]), 150)
+
+    def test_file_alias_counts_once(self):
+        today = datetime.now().astimezone()
+        first = self._token_event(None, {"total_tokens": 120})
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = [Path(tmp) / name for name in ("active.jsonl", "archived.jsonl")]
+            paths[0].write_text(json.dumps(first) + "\n")
+            paths[1].symlink_to(paths[0])
+            for ordered in (paths, list(reversed(paths))):
+                result = plugin.parse_sessions_for_chart([str(p) for p in ordered], [today], "day", "7d", "en")
+                self.assertEqual(sum(s["tokens"] for s in result["buckets"][0]["segments"]), 120)
+
+    def test_last_only_requests_with_different_times_are_independent(self):
+        first = self._token_event(None, {"total_tokens": 120})
+        second = self._token_event(None, {"total_tokens": 120})
+        second["payload"]["timestamp"] = (datetime.now().astimezone() + timedelta(seconds=1)).isoformat()
+        self.assertEqual(self._parse_events([first, second]), 240)
+
+    def test_invalid_totals_cannot_corrupt_baseline(self):
+        for value in (True, -10, 1.5, float("inf"), float("nan")):
+            with self.subTest(value=value):
+                self.assertEqual(self._parse_events([
+                    self._token_event({"total_tokens": 100}),
+                    self._token_event({"total_tokens": value}),
+                    self._token_event({"total_tokens": 120}),
+                ]), 120)
+
+    def test_regressed_totals_do_not_recount_old_usage(self):
+        events = [self._token_event({"total_tokens": n}, {"total_tokens": 20})
+                  for n in (100, 80, 100, 120)]
+        self.assertEqual(self._parse_events(events), 120)
+
+    def test_stale_regression_does_not_cap_later_cumulative_catchup(self):
+        events = [self._token_event({"total_tokens": total}, {"total_tokens": last})
+                  for total, last in ((100, 100), (80, 20), (200, 20))]
+        self.assertEqual(self._parse_events(events), 200)
+
+    def test_inherited_subagent_prefix_is_not_counted(self):
+        inherited = self._token_event({"total_tokens": 1000})
+        inherited["ordinal"] = 2
+        owned = self._token_event({"total_tokens": 1120}, {"total_tokens": 120})
+        owned["ordinal"] = 10
+        meta = {"type": "session_meta", "payload": {"subagent_history_start_ordinal": 10}}
+        self.assertEqual(self._parse_events([meta, inherited, owned, owned]), 120)
+        self.assertEqual(self._parse_events([meta, owned]), 120)
+        self.assertEqual(self._parse_events([owned]), 1120)
+
+    def test_known_subagent_baseline_keeps_cumulative_gap(self):
+        meta = {"type": "session_meta", "payload": {"subagent_history_start_ordinal": 10}}
+        inherited = self._token_event({"total_tokens": 1000})
+        inherited["ordinal"] = 2
+        owned = self._token_event({"total_tokens": 1120}, {"total_tokens": 20})
+        owned["ordinal"] = 10
+        self.assertEqual(self._parse_events([meta, inherited, owned]), 120)
+
+    def test_zero_length_subagent_prefix_does_not_cap_owned_usage(self):
+        meta = {"type": "session_meta", "payload": {"subagent_history_start_ordinal": 0}}
+        owned = self._token_event({"total_tokens": 120}, {"total_tokens": 20})
+        owned["ordinal"] = 10
+        self.assertEqual(self._parse_events([meta, owned]), 120)
+
+    def test_model_in_usage_event_overrides_turn_context(self):
+        event = self._token_event({"total_tokens": 120})
+        event["payload"]["info"]["model"] = "proxy/glm-5.3"
+        result = self._parse_raw_lines([
+            self._raw_line({"type": "turn_context", "payload": {"model": "gpt-5"}}),
+            self._raw_line(event),
+        ])
+        self.assertEqual(result["buckets"][0]["segments"], [{"model": "glm-5.3", "tokens": 120}])
+
+    def test_non_object_line_does_not_abort_valid_usage(self):
+        result = self._parse_raw_lines([
+            b'["token_count"]', self._raw_line(self._token_event({"total_tokens": 120})),
+        ])
+        self.assertEqual(sum(s["tokens"] for s in result["buckets"][0]["segments"]), 120)
+
     def test_invalid_last_usage_is_ignored_when_cumulative_total_is_zero(self):
         events = [
             {"type": "turn_context", "payload": {"model": "gpt-5"}},

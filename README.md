@@ -81,7 +81,7 @@ xattr -cr /Applications/UsageBoard.app
 各插件说明：
 
 - **智谱**：使用国内站 API，兼容智谱和 ZAI 的 Coding Plan Key；`STAT_PERIOD` 支持 `none` / `7d` / `15d` / `30d`，选 `none` 关闭本地统计。
-- **Claude**：通过 OAuth API 查询订阅用量；`PLAN` 选 `none` 时跳过 API 仅返回本地 JSONL 统计，与统计周期均选 `none` 时卡片显示"暂无用量数据"；本地 token 统计按 input、output、cache creation、cache read 实际消耗求和；`CLAUDE_ONLY` 过滤第三方模型；`DATA_DIR` 指定数据目录（默认 `~/.claude`）；`STAT_PERIOD` 同上。
+- **Claude**：通过 OAuth API 查询订阅用量；`PLAN` 选 `none` 时跳过 API 仅返回本地 JSONL 统计，与统计周期均选 `none` 时卡片显示"暂无用量数据"；本地 token 统计按 input、output、cache creation、cache read 实际消耗求和。会话记录按消息 ID 与请求 ID 去重；缺少请求 ID 时，按消息 ID 与会话合并流式内容块，时间戳不同不代表独立请求；同一 sidechain 重放只计一次，优先保留主记录，否则采用 token 总量较大的完整 usage。`CLAUDE_ONLY` 过滤第三方模型；`DATA_DIR` 指定数据目录（默认 `~/.claude`）；`STAT_PERIOD` 同上。
 - **Codex**：`AUTH_FILE`（默认 `~/.codex/auth.json`）与 `DATA_DIR`（默认 `~/.codex`）相互独立，修改统计目录不影响认证路径；列出账号当前可用的额度重置卡，查询失败不影响用量显示；`STAT_PERIOD` 同上。
 - **DeepSeek**：`LIMIT` 设置余额展示上限，进度条按余额占上限比例着色。
 - **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Go / Plus / Pro / Max（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Go），接口不再提供会员等级，未选择或值无效时省略徽标。
@@ -92,6 +92,12 @@ xattr -cr /Applications/UsageBoard.app
 Claude classifier 统计无需接收服务：使用 `AUTOMODE_DECISION_LOG=1 claude` 启动 Claude Code，或在用户级 `~/.claude/settings.json` 的 `env` 中加入 `"AUTOMODE_DECISION_LOG": "1"` 后启动新会话。Claude 会向首次写日志时的工作目录追加 `.automode_decisions.jsonl`；插件从 `DATA_DIR/projects` 会话记录的 `cwd` 自动发现这些文件，读取本地 classifier 的实际四类 token，并合并到同名模型，不增加图表后缀。无需单独指定日志目录；依赖正常保存的会话记录，`--no-session-persistence` 会话的目录可能无法自动发现。不要提交决策日志，可加入项目的本地 Git 排除规则。
 
 该开关已在 Claude Code 2.1.280 实测，但属于内部接口，升级后可能变化。只能统计启用后的记录；服务端 classifier、缺少实际 usage 的记录不追加，避免与主请求重复计数。两阶段及部分重试已包含在决策总量中，不再重复相加；模型回退时总量可能归到最终模型。日志无请求 ID，不按相同内容去重，只对指向同一文件的路径去重；不要在扫描范围保留日志副本。读取时跳过损坏行及尚未追加完成的末行。classifier 每次独立汇总近 30 天，删除日志后对应统计会消失。
+
+本地统计不等于提供商账户总量：提示建议等后台请求可能不写入普通消息记录，其他设备或客户端也可能使用同一账户。插件会用 JSONL 的 `cost-state` 会话累计快照补齐可确认的后台用量：会话起点、所有消息及文件修改时间必须在同一天，扣除主会话和子代理已计入的 token，配置模型名需能对应到日志模型。若存在同模型同日 classifier 日志，则保留原统计以避免重复；跨日、过期、日期不明，或消息缺时间、记录损坏、子代理不可读的快照不补入。快照补差每次独立计算，不写入会话缓存，也不要求 app 常驻。
+
+统计解析参考 [ccusage](https://github.com/ccusage/ccusage) 和 [CodexBar](https://github.com/steipete/CodexBar)。Claude 优先采用完整 usage，避免较大的流式起始估算覆盖最终记录；缓存创建分项不完整时回退到总量字段。Codex 按累计增量统计，缺少累计值时使用 `last_token_usage`，缺少总量字段时使用 input + output；缓存读取、推理 token 属于子集，不重复相加。用量记录中的模型名优先于 turn context；累计回退不降低已计入基线，有明确 ordinal 边界的子代理继承历史不重复计入。两者均跳过非法 token 数值和损坏的 UTF-8 行，升级后自动重建统计缓存。
+
+没有明确边界的 Codex 累计重置、跨文件复制历史，以及未落盘的后台调用仍可能造成差异，不通过估算补齐账户总量。
 
 ## 插件开发
 
