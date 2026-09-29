@@ -115,9 +115,9 @@
   <ul>
     <li>脚本建议使用 <code>#!/usr/bin/env python3</code>。</li>
     <li>UsageBoard 不通过 shell 执行脚本，会通过 <code>/usr/bin/env python3</code> 运行 <code>.py</code> 文件，其他可执行文件直接运行。执行路径使用实际文件路径，不展开 <code>~</code> 或 shell 表达式。</li>
-    <li>插件配置参数通过命令行传入，格式为 <code>--usageboard-param KEY=value</code>。</li>
+    <li>插件配置参数通过命令行传入，格式为 <code>--usageboard-param KEY=value</code>；空字符串值不传入。<code>secret</code> 仅在设置表单中隐藏输入，仍随其他参数保存到权限为 0600 的 config.json，并以同样的命令行形式传递。</li>
     <li>脚本必须向 stdout 输出一个 JSON 对象。stderr 可用于调试，但不会作为用量数据解析。</li>
-    <li>脚本退出码非 0、超时、stdout 不是合法 JSON，都会在对应插件卡片上显示错误。</li>
+    <li>脚本退出码非 0、被 SIGKILL 强制终止或 stdout 不是合法 JSON，都会在对应插件卡片上显示错误；触发执行时限后在 SIGTERM 宽限期内自行退出的进程仍按实际退出码处理，取消始终视为失败。</li>
   </ul>
 
   <h2>声明配置参数</h2>
@@ -174,7 +174,7 @@
       </tr>
       <tr>
         <td><code>icon</code></td>
-        <td>可选。支持 HTTP(S) URL、绝对文件路径、file:// URL 或 app 资源相对路径（如 <code>icons/light/kimi.png</code>）。相对路径以 app 的 Contents/Resources/ 为根，开发运行时以当前工作目录的 Resources/ 为根。深色主题优先使用同名 icons/dark/ 文件，缺失时回退 light。图片按实际 URL 缓存；未设置或加载失败时显示名称首字母占位。远程下载上限为 2 MiB，无进展超时 10 秒、总时限 20 秒；超量时保留占位图。该限制不约束本地文件或解码后的像素内存。</td>
+        <td>可选。支持 HTTP(S) URL、绝对文件路径、file:// URL 或 app 资源相对路径（如 <code>icons/light/kimi.png</code>）。相对路径以 app 的 Contents/Resources/ 为根，开发运行时以当前工作目录的 Resources/ 为根。仅 icons/light/ 资源相对路径在深色主题下优先使用同名 icons/dark/ 文件，缺失时回退 light。图片按实际 URL 缓存；未设置或加载失败时显示名称首字母占位。远程下载上限为 2 MiB，无进展超时 10 秒、总时限 20 秒；超量时保留占位图。该限制不约束本地文件或解码后的像素内存。</td>
       </tr>
       <tr>
         <td><code>description</code></td>
@@ -218,7 +218,7 @@
       </tr>
       <tr>
         <td><code>defaultValue</code></td>
-        <td>添加插件时自动填入的默认值。</td>
+        <td>字符串。添加插件时自动填入；重载元数据时也会补入新增参数的默认值，已有值（包括空字符串）保留。重载时未提供默认值的新增参数填为空字符串。</td>
       </tr>
       <tr>
         <td><code>options</code></td>
@@ -299,6 +299,7 @@ api_key = params.get("API_KEY", "")</code></pre>
 }</code></pre>
 
   <h3>用量项目字段</h3>
+  <p>每个项目必须提供 <code>id</code>、<code>name</code>、<code>used</code>、<code>limit</code>、<code>displayStyle</code> 和 <code>status</code>。数值字段使用 JSON 数字；<code>displayStyle</code> / <code>status</code> 必须使用下表枚举值。缺失必填字段或枚举值无效会使整次输出解析失败；<code>resetAt</code> 和 <code>color</code> 可省略或为 null。</p>
   <table>
     <thead>
       <tr>
@@ -342,6 +343,8 @@ api_key = params.get("API_KEY", "")</code></pre>
     </tbody>
   </table>
 
+  <p>内置 <code>_common.color_for</code> / <code>color_for_pct</code> 显式返回颜色，阈值为低于 60% 蓝、60% 至低于 80% 黄、80% 至低于 90% 橙、90% 及以上红，覆盖 App 默认值。DeepSeek 按剩余余额使用独立规则。</p>
+
   <h3>可选徽章字段</h3>
   <p><code>badge</code> 是卡片标题旁的大写套餐名；<code>badgeColor</code> 支持 blue、orange、gray（或 grey）、indigo、purple、teal、green、red、yellow，显示同色文字和淡背景。未指定或无法识别时按 PRO、PLUS、TEAM、FREE、MAX 等套餐预设匹配。</p>
 
@@ -372,6 +375,7 @@ api_key = params.get("API_KEY", "")</code></pre>
 
   <h3>可选图表字段</h3>
   <p>顶层 <code>chart</code> 字段用于在插件卡片底部展示 token 统计图。使用 <code>kind: "line"</code> 数据结构，实际折线/堆叠直方图由通用设置的 <code>chartMode</code> 决定；每个 <code>bucket</code> 是一个时间点，每个 <code>segment</code> 是一个模型序列值。</p>
+  <p>提供 chart 时，必须同时提供 <code>kind</code>、<code>period</code>、<code>bucketUnit</code> 和 <code>buckets</code>；每个桶必须提供 <code>id</code>、<code>label</code> 和 <code>segments</code>，每个分段必须提供 <code>model</code> 和数字 <code>tokens</code>。空数据可返回空 buckets 数组。</p>
   <table>
     <thead>
       <tr>
@@ -386,7 +390,7 @@ api_key = params.get("API_KEY", "")</code></pre>
       </tr>
       <tr>
         <td><code>bucketUnit</code></td>
-        <td>时间桶单位，支持 <code>hour</code> 或 <code>day</code>。</td>
+        <td>时间桶单位，支持 <code>hour</code> 或 <code>day</code>；其他字符串回退为 day。</td>
       </tr>
       <tr>
         <td><code>buckets[].segments[]</code></td>

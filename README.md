@@ -35,7 +35,7 @@ UsageBoard 是原生 macOS 菜单栏应用，以插件方式聚合 API、模型�
 
 ## 功能特性
 
-- 菜单栏常驻，点击图标打开面板；分组 / 标签页两种布局，卡片可拖拽排序。
+- 菜单栏常驻，点击图标打开面板；分组 / 标签页两种布局；在“设置 → 插件”列表中拖拽排序，面板按该顺序展示。
 - 进度条按用量自动切色；支持百分比或数字占比、重置时间和订阅套餐徽章。
 - Token 统计图支持折线 / 堆叠直方图切换。
 - 手动刷新、定时刷新（每个插件独立间隔）和单卡片刷新；系统休眠时暂停定时刷新，唤醒后继续。
@@ -80,14 +80,16 @@ xattr -cr /Applications/UsageBoard.app
 
 各插件说明：
 
-- **智谱**：使用国内站 API，兼容智谱和 ZAI 的 Coding Plan Key；`STAT_PERIOD` 支持 `none` / `7d` / `15d` / `30d`，选 `none` 关闭本地统计。
+- **智谱**：使用国内站 API，兼容智谱和 ZAI 的 Coding Plan Key；`STAT_PERIOD` 支持 `none` / `7d` / `15d` / `30d`，选 `none` 关闭统计查询和图表。
 - **Claude**：通过 OAuth API 查询订阅用量；`PLAN` 选 `none` 时跳过 API 仅返回本地 JSONL 统计，与统计周期均选 `none` 时卡片显示"暂无用量数据"；本地 token 统计按 input、output、cache creation、cache read 实际消耗求和。会话记录按消息 ID 与请求 ID 去重；缺少请求 ID 时，按消息 ID 与会话合并流式内容块，时间戳不同不代表独立请求；同一 sidechain 重放只计一次，优先保留主记录，否则采用 token 总量较大的完整 usage。`CLAUDE_ONLY` 过滤第三方模型；`DATA_DIR` 指定数据目录（默认 `~/.claude`）；`STAT_PERIOD` 同上。
 - **Codex**：`AUTH_FILE`（默认 `~/.codex/auth.json`）与 `DATA_DIR`（默认 `~/.codex`）相互独立，修改统计目录不影响认证路径；列出账号当前可用的额度重置卡，查询失败不影响用量显示；`STAT_PERIOD` 同上。
 - **DeepSeek**：`LIMIT` 设置余额展示上限，进度条按余额占上限比例着色。
-- **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Go / Plus / Pro / Max（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Go），接口不再提供会员等级，未选择或值无效时省略徽标。
+- **Command Code**：5 小时和周用量来自订阅窗口；月上限按周上限的两倍估算，月已用按上限减订阅余额计算，充值余额不参与。缺少有效周上限时省略月项。
+- **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Go / Plus / Pro / Max（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Go），插件不从用量响应推断会员等级，未选择或值无效时省略徽标。
 
-实现细节：GLM、Codex 与 Claude 的图表缓存各自维护版本号，升级旧缓存时一次性重建近 30 天数据，随后恢复增量更新；Claude、Codex 与智谱统计缓存原子写入，失败保留旧缓存；Codex 按行解码 UTF-8，损坏行整行跳过；Claude 空套餐名回退配置值再到 pro；Kimi 省略时区不明的重置时间；MiniMax 对显式 null 或非对象 `base_resp` 返回解析失败，缺失字段保持兼容。
+### 本地统计与 Claude classifier
 
+Claude / Codex 从本地日志统计，智谱图表数据来自 API。三者使用独立版本的统计缓存；旧缓存升级时重建近 30 天数据，随后增量更新。统计缓存写入失败时保留旧文件。
 
 Claude classifier 统计无需接收服务：使用 `AUTOMODE_DECISION_LOG=1 claude` 启动 Claude Code，或在用户级 `~/.claude/settings.json` 的 `env` 中加入 `"AUTOMODE_DECISION_LOG": "1"` 后启动新会话。Claude 会向首次写日志时的工作目录追加 `.automode_decisions.jsonl`；插件从 `DATA_DIR/projects` 会话记录的 `cwd` 自动发现这些文件，读取本地 classifier 的实际四类 token，并合并到同名模型，不增加图表后缀。无需单独指定日志目录；依赖正常保存的会话记录，`--no-session-persistence` 会话的目录可能无法自动发现。不要提交决策日志，可加入项目的本地 Git 排除规则。
 
@@ -95,7 +97,7 @@ Claude classifier 统计无需接收服务：使用 `AUTOMODE_DECISION_LOG=1 cla
 
 本地统计不等于提供商账户总量：提示建议等后台请求可能不写入普通消息记录，其他设备或客户端也可能使用同一账户。插件会用 JSONL 的 `cost-state` 会话累计快照补齐可确认的后台用量：会话起点、所有消息及文件修改时间必须在同一天，扣除主会话和子代理已计入的 token，配置模型名需能对应到日志模型。若存在同模型同日 classifier 日志，则保留原统计以避免重复；跨日、过期、日期不明，或消息缺时间、记录损坏、子代理不可读的快照不补入。快照补差每次独立计算，不写入会话缓存，也不要求 app 常驻。
 
-统计解析参考 [ccusage](https://github.com/ccusage/ccusage) 和 [CodexBar](https://github.com/steipete/CodexBar)。Claude 优先采用完整 usage，避免较大的流式起始估算覆盖最终记录；缓存创建分项不完整时回退到总量字段。Codex 按累计增量统计，缺少累计值时使用 `last_token_usage`，缺少总量字段时使用 input + output；缓存读取、推理 token 属于子集，不重复相加。用量记录中的模型名优先于 turn context；累计回退不降低已计入基线，有明确 ordinal 边界的子代理继承历史不重复计入。两者均跳过非法 token 数值和损坏的 UTF-8 行，升级后自动重建统计缓存。
+统计解析参考 [ccusage](https://github.com/ccusage/ccusage) 和 [CodexBar](https://github.com/steipete/CodexBar)。去重、累计增量、缓存与补差边界见[架构说明](docs/architecture.md#33-token-统计与缓存)。
 
 没有明确边界的 Codex 累计重置、跨文件复制历史，以及未落盘的后台调用仍可能造成差异，不通过估算补齐账户总量。
 
@@ -111,7 +113,7 @@ Claude classifier 统计无需接收服务：使用 `AUTOMODE_DECISION_LOG=1 cla
 
 - 默认超时 15 秒；stdout 上限 8 MiB，stderr 保留前 64 KiB；超时、取消或超限终止插件进程组（先 SIGTERM，最多 1 秒清理后 SIGKILL），插件不能依赖后代在运行结束后存活。
 - 禁用 Python 字节码缓存，避免修改 app 包。
-- 退出码非 0、超时或 stdout 非法 JSON 显示为插件错误；也可以退出码 0 输出 `{"error": "错误信息"}` 报告失败，错误显示在卡片内容区。
+- 退出码非 0、被 SIGKILL 强制终止或 stdout 非法 JSON 显示为插件错误；触发执行时限后在 SIGTERM 宽限期内自行退出的进程仍按实际退出码处理，取消始终视为失败；也可以退出码 0 输出 `{"error": "错误信息"}` 报告失败，错误显示在卡片内容区。
 - `USAGEBOARD_LANGUAGE` 为保留参数（`zh-Hans` / `en`），插件应按它直接返回对应语言的展示文本。
 
 完整协议见随 app 打包的 [插件编写说明](Resources/PluginAuthoringGuide.html)。
@@ -218,6 +220,7 @@ if __name__ == "__main__":
 字段摘要（完整字段细节见插件编写说明）：
 
 - `updatedAt` 与 `items[]`：必填；`used` / `limit` / `displayStyle`（`percent` 或 `ratio`）/ `resetAt` / `status` / `color` 控制用量行展示，未指定颜色时按进度切色（<60% 蓝、60%–<80% 黄、80%–<100% 橙、100% 红）。
+- 内置 `_common.color_for` / `color_for_pct` 显式返回颜色，阈值为 <60% 蓝、60%–<80% 黄、80%–<90% 橙、≥90% 红，覆盖 App 的默认切色；DeepSeek 按剩余余额使用独立规则。
 - `badge` / `badgeColor`：可选标题徽章；`badgeColor` 支持 `blue`、`orange`、`gray`（或 `grey`）、`indigo`、`purple`、`teal`、`green`、`red`、`yellow`，缺省时按徽章文字匹配预设档位。
 - `credits`：可选配额重置卡数组，只应包含当前可用的卡，查询失败时省略该字段。
 - `chart`：可选 token 统计图，`kind: "line"` 按时间桶给出模型分段；折线 / 直方图展示由全局 `chartMode` 决定，数据为空时可用 `chart.message` 提示。
@@ -229,7 +232,7 @@ if __name__ == "__main__":
 ~/Library/Application Support/UsageBoard/
 ```
 
-- `config.json`：主配置文件（含插件参数），以仅当前用户可读写权限（0600）保存。
+- `config.json`：主配置文件（含插件参数），以仅当前用户可读写权限（0600）保存；`secret` 参数仅隐藏表单输入，仍以明文保存并通过命令行传递。
 - `plugins/`：用户插件目录，添加插件时文件选择器默认打开这里。
 - `states/`：主程序保存的插件成功快照缓存。
 - `plugin-caches/`：智谱统计缓存，按 API key 的哈希前缀区分；Claude / Codex 的增量统计缓存另存于各自 `DATA_DIR/.usageboard-chart-cache.json`。
@@ -280,7 +283,7 @@ if __name__ == "__main__":
 
 - `overviewDisplayMode`：`grouped` / `tabs`；`chartMode`：`line` / `bar`（旧配置缺失回退 `line`）；`theme`：`light` / `dark` / `system`（缺失按 `system`），切换立即生效并持久保存。
 - `language`：`zh-Hans` / `en`，重启后生效；`launchAtLogin` 控制开机启动；`showUpdateBadge` 控制主界面是否显示新版本胶囊提示（缺失按 `true`）。
-- `plugins[].stateID` 是持久化缓存 ID；修改脚本路径、参数或 metadata 后重新生成。
+- `plugins[].stateID` 是持久化缓存 ID；在设置中保存脚本路径、参数或 metadata 变更时重新生成，启动重载 metadata 或直接编辑 JSON 不触发轮换。
 - `plugins[].executablePath` 使用实际文件路径，不展开 `~` 或 shell 表达式，建议通过文件选择器填写。
 - `plugins[].enabled` 为 `false` 时不执行插件；`plugins[].metadata` 通常由脚本头部注释块解析生成；`plugins[].parameterValues` 保存设置页填写的参数。
 
@@ -306,7 +309,7 @@ bash scripts/build.sh                       # 本地构建、签名并启动 dis
 bash scripts/release.sh <version> "<release notes>"
 ```
 
-脚本完成 release 构建、写入版本与 build 号、复制资源、签名、生成 `UsageBoard-<version>.zip` 和 `version.json`（含 `updatedAt`、`latestVersion`、`latestBuild`、`downloadURL`、`notes`；更新说明缺省时取最近 tag 到 HEAD 的提交），上传服务器并清理远端旧 zip（保留最近三个）。
+脚本完成 release 构建、写入版本与 build 号、复制资源、签名、生成 `UsageBoard-<version>.zip` 和 `version.json`（含 `updatedAt`、`latestVersion`、`latestBuild`、`downloadURL`、`notes`；更新说明缺省时取最近 tag 到 HEAD 的提交），生成新 ZIP 前删除本地 `dist/UsageBoard-*.zip`；上传服务器后按修改时间保留最近三个 ZIP（不按语义版本排序）。
 
 脚本不创建或推送 Git tag、不发布 GitHub Release、不更新 Homebrew cask；完整发布需另行完成这些步骤，并核对各渠道版本与 zip SHA-256 一致。发布前先停止旧 UsageBoard 实例；与 build.sh 不同，release.sh 不负责停止或启动应用。
 

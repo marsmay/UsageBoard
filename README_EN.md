@@ -35,7 +35,7 @@ UsageBoard is a native macOS menu bar app that aggregates quotas, balances, and 
 
 ## Features
 
-- Lives in the menu bar; click the icon to open the panel. Grouped or tabbed layouts with drag-and-drop card ordering.
+- Lives in the menu bar; click the icon to open the panel. Grouped or tabbed layouts; drag plugins in Settings → Plugins to change their display order in the panel.
 - Progress bars change color with usage; supports percentage or ratio display, reset times, and subscription plan badges.
 - Token usage charts switch between line and stacked bar modes.
 - Manual, scheduled (per-plugin interval), and per-card refresh; scheduled refresh pauses during system sleep and resumes on wake.
@@ -80,14 +80,16 @@ Plugin sources live in [Resources/BundledPlugins](Resources/BundledPlugins) with
 
 Per-plugin notes:
 
-- **Zhipu**: uses the domestic API endpoint and accepts both Zhipu and ZAI Coding Plan keys. `STAT_PERIOD` supports `none` / `7d` / `15d` / `30d`; `none` disables local stats.
+- **Zhipu**: uses the domestic API endpoint and accepts both Zhipu and ZAI Coding Plan keys. `STAT_PERIOD` supports `none` / `7d` / `15d` / `30d`; `none` disables statistics queries and charts.
 - **Claude**: fetches subscription usage via the OAuth API. Setting `PLAN` to `none` skips the API call and returns only local JSONL stats; when both plan and stats period are `none`, the card shows a "No usage data" placeholder. Local token totals sum actual input, output, cache creation, and cache read usage. Session records are deduplicated by message ID and request ID; without a request ID, message ID and session group streaming content blocks, whose different timestamps do not indicate separate requests. Sidechain replays count once, preferring the main record; otherwise the complete usage with the larger token total is used. `CLAUDE_ONLY` filters out third-party models; `DATA_DIR` points at the data directory (default `~/.claude`); `STAT_PERIOD` as above.
 - **Codex**: `AUTH_FILE` (default `~/.codex/auth.json`) and `DATA_DIR` (default `~/.codex`) are independent — changing the stats directory does not change the authentication path. Lists the account's currently usable rate-limit reset cards; query failures never affect quota display. `STAT_PERIOD` as above.
 - **DeepSeek**: `LIMIT` sets the displayed balance cap; the progress bar is colored by the balance-to-limit ratio.
-- **Kimi**: queries the 5-hour rolling window and weekly usage. Select the subscription plan manually — Go / Plus / Pro / Max (gray / indigo / blue / orange badges; defaults to Go). The API no longer reports membership level; the badge is omitted when the plan is unset or invalid.
+- **Command Code**: 5-hour and weekly usage come from subscription windows. The monthly cap is estimated as twice the weekly cap; monthly usage is that cap minus the subscription balance, excluding top-ups. The monthly item is omitted without a valid weekly cap.
+- **Kimi**: queries the 5-hour rolling window and weekly usage. Select the subscription plan manually — Go / Plus / Pro / Max (gray / indigo / blue / orange badges; defaults to Go). The plugin does not infer membership level from usage responses; the badge is omitted when the plan is unset or invalid.
 
-Implementation details: GLM, Codex, and Claude chart caches each track their own cache version and rebuild the previous 30 days once when upgrading, then resume incremental updates. Claude, Codex, and Zhipu stats caches are written atomically — a failed write preserves the previous complete cache. Codex decodes UTF-8 line by line and skips corrupted lines entirely. Claude falls back to the configured plan and then pro for empty server plan names. Kimi omits reset timestamps without a known timezone. MiniMax rejects an explicit null or non-object `base_resp`; a missing field retains the compatibility behavior.
+### Local Statistics and Claude Classifiers
 
+Claude and Codex aggregate local logs; Zhipu chart data comes from its API. Each maintains a versioned statistics cache, rebuilding the last 30 days when upgrading an old cache and then updating incrementally. Failed cache writes preserve the previous file.
 
 Claude classifier stats require no receiving service: launch Claude Code with `AUTOMODE_DECISION_LOG=1 claude`, or add `"AUTOMODE_DECISION_LOG": "1"` to `env` in the user-level `~/.claude/settings.json` and start a new session. Claude appends `.automode_decisions.jsonl` in its working directory when logging first starts. The plugin discovers these files from session `cwd` fields under `DATA_DIR/projects`, reads the four actual token categories for local classifiers, and merges them into the same model names without a chart suffix. No separate log directory is needed; discovery depends on persisted transcripts, so directories used only with `--no-session-persistence` may not be discovered. Keep decision logs out of commits, for example through a local Git exclude rule.
 
@@ -95,7 +97,7 @@ This internal switch was verified with Claude Code 2.1.280 and may change in fut
 
 Local statistics can differ from the provider's account total: background requests such as prompt suggestions may be absent from ordinary message records, and other devices or clients may share the account. The plugin recovers attributable background usage from JSONL `cost-state` snapshots only when the session start, all messages, and file modification time fall on one local day. It subtracts already counted main and subagent usage and requires configured model names to match logged models. Models with classifier logs on that day retain the original calculation to avoid duplication. Cross-day, stale, and undatable snapshots are skipped, as are transcripts with undated messages, malformed records, or unreadable subagent logs. Adjustments are recalculated independently of the session cache and do not require the app to stay running.
 
-Parsing draws on [ccusage](https://github.com/ccusage/ccusage) and [CodexBar](https://github.com/steipete/CodexBar). Claude prefers complete usage over larger streaming-start estimates and falls back to aggregate cache creation when the breakdown is incomplete. Codex uses cumulative deltas, falling back to `last_token_usage` when cumulative usage is absent and input + output when the total field is absent; cached input and reasoning output are subsets and are not added twice. Models recorded with usage take precedence over turn context. Regressions do not lower the counted baseline, and inherited subagent history with an explicit ordinal boundary is excluded. Both skip invalid token values and corrupt UTF-8 lines and automatically rebuild their caches after this update.
+Parsing draws on [ccusage](https://github.com/ccusage/ccusage) and [CodexBar](https://github.com/steipete/CodexBar). See the [architecture guide](docs/architecture.md#33-token-统计与缓存) for deduplication, cumulative deltas, cache behavior, and adjustment boundaries.
 
 Codex counter resets without explicit boundaries, copied history across files, and unlogged background calls can still cause differences; account totals are not filled in with estimates.
 
@@ -111,7 +113,7 @@ Constraints and behavior:
 
 - Default timeout is 15 seconds; stdout is capped at 8 MiB and stderr retains at most 64 KiB. Timeout, cancellation, or excessive stdout terminates the plugin process group (SIGTERM first, then SIGKILL after at most 1 second) — plugins must not depend on descendants outliving a run.
 - Python bytecode caching is disabled to keep the app bundle unchanged.
-- A non-zero exit code, timeout, or invalid stdout JSON shows as a plugin error. Alternatively, output `{"error": "message"}` with exit code 0 to report a failure; the message is shown in the card body.
+- A non-zero exit code, forced termination by SIGKILL, or invalid stdout JSON shows as a plugin error. After reaching the time limit, a process that exits during the SIGTERM grace period is handled according to its actual exit code; cancellation always fails the run. Alternatively, output `{"error": "message"}` with exit code 0 to report a failure; the message is shown in the card body.
 - `USAGEBOARD_LANGUAGE` is a reserved parameter (`zh-Hans` / `en`); scripts should read it and return display text in the corresponding language.
 
 See the [Plugin Authoring Guide](Resources/PluginAuthoringGuide.html) (bundled with the app) for the full protocol.
@@ -218,6 +220,7 @@ On failure:
 Field summary (see the authoring guide for full field details):
 
 - `updatedAt` and `items[]`: required. `used` / `limit` / `displayStyle` (`percent` or `ratio`) / `resetAt` / `status` / `color` control each usage row; without a color, the bar follows the usage ratio (blue below 60%, yellow from 60% to below 80%, orange from 80% to below 100%, red at 100%).
+- Bundled `_common.color_for` / `color_for_pct` helpers explicitly return blue below 60%, yellow from 60% to below 80%, orange from 80% to below 90%, and red at or above 90%, overriding the app default. DeepSeek has separate rules based on remaining balance.
 - `badge` / `badgeColor`: optional title badge. `badgeColor` supports `blue`, `orange`, `gray` (or `grey`), `indigo`, `purple`, `teal`, `green`, `red`, `yellow`; absent values fall back to a text-based preset.
 - `credits`: optional array of quota reset cards; include only currently usable cards and omit the field entirely when the query fails.
 - `chart`: optional token usage chart using the `kind: "line"` structure with per-bucket model segments; the global `chartMode` selects line or bar rendering, and `chart.message` can carry a hint when stats are empty.
@@ -229,7 +232,7 @@ Field summary (see the authoring guide for full field details):
 ~/Library/Application Support/UsageBoard/
 ```
 
-- `config.json`: main configuration (including plugin parameters), saved with owner-only permissions (0600).
+- `config.json`: main configuration (including plugin parameters), saved with owner-only permissions (0600). The `secret` type masks form input only; values are still stored as plain text and passed as command-line arguments.
 - `plugins/`: user plugin directory; the file picker defaults here when adding plugins.
 - `states/`: successful plugin snapshots saved by the app.
 - `plugin-caches/`: Zhipu stats cache, separated by API key hash prefix; Claude/Codex incremental stats caches live at `DATA_DIR/.usageboard-chart-cache.json` instead.
@@ -280,7 +283,7 @@ Main configuration JSON structure:
 
 - `overviewDisplayMode`: `grouped` / `tabs`; `chartMode`: `line` / `bar` (older configurations default to `line`); `theme`: `light` / `dark` / `system` (missing values default to `system`) — theme changes apply immediately and persist.
 - `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login; `showUpdateBadge` controls whether the popover shows the new-version capsule (defaults to `true` when absent).
-- `plugins[].stateID` is a persistent cache ID; editing the script path, parameters, or metadata generates a new one.
+- `plugins[].stateID` is a persistent cache ID; saving script-path, parameter, or metadata changes through settings generates a new one. Startup metadata reloads and direct JSON edits do not rotate it.
 - `plugins[].executablePath` must be an actual file path; `~` and shell expressions are not expanded — use the file picker.
 - `plugins[].enabled`: when `false`, the plugin is not executed. `plugins[].metadata` is typically parsed from the script header comment block; `plugins[].parameterValues` stores values from the settings UI.
 
@@ -306,7 +309,7 @@ The release script uploads directly to the server — run it only when publishin
 bash scripts/release.sh <version> "<release notes>"
 ```
 
-The script builds a release, writes the version and build number, copies resources, signs, generates `UsageBoard-<version>.zip` and `version.json` (with `updatedAt`, `latestVersion`, `latestBuild`, `downloadURL`, `notes`; release notes default to commits since the last tag), uploads to the server, and prunes old remote zips (keeping the latest three).
+The script builds a release, writes the version and build number, copies resources, signs, generates `UsageBoard-<version>.zip` and `version.json` (with `updatedAt`, `latestVersion`, `latestBuild`, `downloadURL`, `notes`; release notes default to commits since the last tag), deletes existing local `dist/UsageBoard-*.zip` files before creating the new ZIP, uploads to the server, and retains the three most recently modified remote ZIPs (not the three highest semantic versions).
 
 It does not create or push Git tags, publish GitHub Releases, or update the Homebrew cask — complete those steps separately and verify matching versions and zip SHA-256 values across channels. Stop the existing UsageBoard instance before publishing; unlike build.sh, release.sh does not stop or launch the app.
 

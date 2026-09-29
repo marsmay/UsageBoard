@@ -58,34 +58,40 @@ UsageBoard 是 macOS 菜单栏应用，通过外部插件聚合服务配额、�
 
 ## 3. 配置、模型与存储
 
+### 3.1 模型与运行目录
+
 Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swift`、`PluginOutput.swift`、`PluginSnapshot.swift`。`CodableHelpers.swift` 处理动态键及元数据翻译，`Protocols.swift` 提供 ConfigStoring、PluginStateStoring、PluginExecuting、UpdateChecking，供 Store 注入测试替身。
 
 默认运行目录为 `~/Library/Application Support/UsageBoard/`：
 
 | 路径 | 内容与行为 |
 | --- | --- |
-| `config.json` | 插件配置与参数。ConfigStore 同目录创建权限 0600 的临时文件，写入后用 rename 原子替换 |
+| `config.json` | 插件配置与参数（含明文 secret 值）。ConfigStore 同目录创建权限 0600 的临时文件，写入后用 rename 原子替换 |
 | `plugins/` | 内置插件符号链接和用户脚本；添加插件的文件选择器默认打开这里 |
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
-Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；会话统计同时收集所有记录中的绝对 `cwd`，持久化到 `classifier_dirs`，增量扫描继续补充目录。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖；GLM 曾因此纠正旧跨日漏计，Codex 曾因此纠正旧解析器遇坏字节后遗漏的历史数据。Claude/Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
+### 3.2 配置与快照缓存
 
-Claude classifier 使用客户端内部开关 `AUTOMODE_DECISION_LOG=1` 写出的工作目录 `.automode_decisions.jsonl`，无需服务或额外插件参数。插件仅检查缓存中已发现 cwd 下的固定文件名，不递归遍历项目；通过 device/inode 去除同一文件的路径别名。只累计 `allowlisted: false`、`classifierSource: local` 且有合法实际 token 的记录，按毫秒时间戳归属本地日期，与会话统计合并到同名模型。classifier 用量每次全量读取近 30 天，不写入会话 days 缓存，避免重复累加或删除日志后残留。无请求 ID，不对相同行做去重；损坏行、非法数值和未完成末行逐行跳过。无持久化会话无法保证发现 cwd；服务端 classifier 不追加，模型回退总量可能归到最终模型。这是 2.1.280 实测的内部日志格式，不保证其他版本或所有失败/取消路径完整覆盖。
+配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、开启新版本胶囊提示、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
 
-本地 token 解析参考 ccusage `5859497` 与 CodexBar `2db68ee`（2026-09-29 对照）。Claude 按消息/请求去重，无请求 ID 时按消息/会话合并流式块；完整 usage 优先于显式 `stop_reason: null`、无输出且无缓存字段的起始估算，随后优先主记录和较大的整份 usage，不拼接逐字段最大值。嵌套缓存创建字段完整时求和，缺项时优先回退聚合字段。仅计非负有限整数。日内 `cost-state` 补差在主会话、子代理和 classifier 统计之后独立重算，不写入会话缓存；只有 startTime、所有记录和 mtime 同日且模型可对应、无 classifier 重叠时补入正差，跨日快照不分摊；缺少消息时间、损坏记录或不可读子代理会使同日证明失效，跳过补差。
-
-Codex 优先使用累计 `total_tokens` 的正增量；缺少该字段时使用 input + output（不重复加 cached input / reasoning output），缺累计 usage 时使用 `last_token_usage` 并推进基线。有效累计值为零或不变时不重复加 last；累计回退保留高水位，后续累计值超过高水位时计入完整正差，不以 last 限制累计补回的用量。单文件相同时间/用量/模型事件及同 inode 文件别名去重；不跨独立请求按相同 token 数去重。首个 session_meta 的 `subagent_history_start_ordinal` 标记继承前缀，只保留其基线，只有非空继承前缀缺少累计基线时，首个自有事件才以 last 为上限；已有继承基线或前缀为空时保留完整累计增量。用量事件的 model 优先于 turn_context；前置无模型记录仍回填首个已知模型。无法确认的累计重置和跨文件复制历史仍有限制，不推测账户侧漏记请求。缓存版本由 Claude 11 / Codex 7 重建历史结果。
-
-配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
-
-`PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据，旧 stateID 的磁盘与内存缓存在旧刷新（包括已开始的缓存写入）结束后后台清理；删除插件同样清理。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式，以 `~` 开头的路径直接报错拒绝；插件参数是否展开路径由插件自身决定。
+`PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据，旧 stateID 的磁盘与内存缓存在旧刷新（包括已开始的缓存写入）结束后后台清理；删除插件同样清理。启动时 `reloadAllMetadata` 仅重载 metadata 并补齐缺少的参数默认值，沿用已有 stateID；直接编辑 config.json 也不会自动触发上述轮换。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式，以 `~` 开头的路径直接报错拒绝；插件参数是否展开路径由插件自身决定。
 
 文件选择器会解析符号链接返回真实路径；addPlugin 与 updatePlugin 统一经 `canonicalExecutablePath` 归一：所选文件与 `plugins/` 目录内同名链接目标一致时改存链接路径本身，app 包迁移或重建后安装器重新指向新包时配置中的执行路径保持有效。
 
 PluginStateStore 以 NSLock 保护的内存缓存加磁盘文件实现两级缓存。文件名由 stateID 清理不安全字符后生成；先原子写盘成功再更新内存。磁盘文件被删除时，已有内存缓存仍可命中。`needsRefresh` 按 updatedAt 判断过期，间隔下限为 5 秒；Store 自身调度使用快照和 nextRefreshAt。
 
-`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。所有已启用插件的卡片始终渲染；无内容的快照显示"暂无用量数据"占位，失败时显示错误信息。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
+`UsageItem.progress` 将有限且 limit > 0 的 used/limit 限制在 0…1；无效值返回 0。数值标签由 `displayStyle` 决定。已启用插件不因缺少内容而隐藏：分组模式展示全部卡片，标签页模式展示当前选中的插件。无内容的快照显示"暂无用量数据"占位，失败时显示错误信息。`PluginOutput` 成功对象要求 updatedAt 和 items；badge、badgeColor、chart、credits 可选。
+
+### 3.3 Token 统计与缓存
+
+Claude/Codex 的增量统计缓存位于各自 `DATA_DIR/.usageboard-chart-cache.json`，不在 `states/`。GLM 缓存可由插件内部的 cache_dir 或 `USAGEBOARD_CACHE_DIR` 覆盖。Claude 全量重建按记录时间扫描所有日志，不以文件 mtime 排除文件；会话统计同时收集所有记录中的绝对 `cwd`，持久化到 `classifier_dirs`，增量扫描继续补充目录。三个插件各自维护独立的图表缓存版本（见各插件 `CACHE_VERSION` 常量），首次读取旧版本会重建近 30 天数据，随后按最后缓存日起增量覆盖。GLM 从 API 获取统计数据，Claude/Codex 从本地日志读取；三者都使用原子写入保存统计缓存，写入失败保留旧文件。Claude/Codex 按行解码 UTF-8，损坏行整体跳过，不中断后续有效记录。Claude/Codex 的模型统计名归一化由 `_common.normalize_model_name` 完成：按 `/` 取末段并剥离代理常见的末尾思考强度括号标注（如 `gpt-5(high)`、`gpt-5（high）`），合并同名数据。
+
+Claude classifier 使用客户端内部开关 `AUTOMODE_DECISION_LOG=1` 写出的工作目录 `.automode_decisions.jsonl`，无需服务或额外插件参数。插件仅检查缓存中已发现 cwd 下的固定文件名，不递归遍历项目；通过 device/inode 去除同一文件的路径别名。只累计 `allowlisted: false`、`classifierSource: local` 且有合法实际 token 的记录，按毫秒时间戳归属本地日期，与会话统计合并到同名模型。classifier 用量每次全量读取近 30 天，不写入会话 days 缓存，避免重复累加或删除日志后残留。无请求 ID，不对相同行做去重；损坏行、非法数值和未完成末行逐行跳过。无持久化会话无法保证发现 cwd；服务端 classifier 不追加，模型回退总量可能归到最终模型。这是 2.1.280 实测的内部日志格式，不保证其他版本或所有失败/取消路径完整覆盖。
+
+本地 token 解析参考 ccusage `5859497` 与 CodexBar `2db68ee`（2026-09-29 对照）。Claude 按消息/请求去重，无请求 ID 时按消息/会话合并流式块；完整 usage 优先于显式 `stop_reason: null`、无输出且无缓存字段的起始估算，随后优先主记录和较大的整份 usage，不拼接逐字段最大值。嵌套缓存创建字段完整时求和，缺项时优先回退聚合字段。仅计非负有限整数。日内 `cost-state` 补差在主会话、子代理和 classifier 统计之后独立重算，不写入会话缓存；只有 startTime、所有记录和 mtime 同日且模型可对应、无 classifier 重叠时补入正差，跨日快照不分摊；缺少消息时间、损坏记录或不可读子代理会使同日证明失效，跳过补差。
+
+Codex 优先使用累计 `total_tokens` 的正增量；缺少该字段时使用 input + output（不重复加 cached input / reasoning output），缺累计 usage 时使用 `last_token_usage` 并推进基线。有效累计值为零或不变时不重复加 last；累计回退保留高水位，后续累计值超过高水位时计入完整正差，不以 last 限制累计补回的用量。单文件相同时间/用量/模型事件及同 inode 文件别名去重；不跨独立请求按相同 token 数去重。首个 session_meta 的 `subagent_history_start_ordinal` 标记继承前缀，只保留其基线，只有非空继承前缀缺少累计基线时，首个自有事件才以 last 为上限；已有继承基线或前缀为空时保留完整累计增量。用量事件的 model 优先于 turn_context；前置无模型记录仍回填首个已知模型。无法确认的累计重置和跨文件复制历史仍有限制，不推测账户侧漏记请求。缓存兼容性以各插件的 `CACHE_VERSION` 为准。
 
 ## 4. Store 生命周期与数据流
 
@@ -97,7 +103,7 @@ PluginStateStore 以 NSLock 保护的内存缓存加磁盘文件实现两级缓�
 2. 固定当前会话的 activeLanguage，初始化 AppLocalization。
 3. 安装内置插件链接，重载已配置插件的 metadata；仅在配置加载成功时持久化。
 4. 重建初始快照，恢复成功缓存。
-5. 启动已启用插件的调度任务，订阅系统睡眠/唤醒事件。
+5. 启动已启用插件的调度任务和独立的更新检查任务，订阅系统睡眠/唤醒事件。
 
 刷新流程：
 
@@ -127,7 +133,7 @@ Store.refresh(pluginID:force:)
 
 ## 5. 插件执行与协议
 
-`PluginExecutor` 对 `.py` 使用 `/usr/bin/env python3 <script>`，其他可执行文件直接运行；不经过 shell。参数为重复的 `--usageboard-param KEY=value`，并注入当前会话语言 `USAGEBOARD_LANGUAGE`。
+`PluginExecutor` 对 `.py` 使用 `/usr/bin/env python3 <script>`，其他可执行文件直接运行；不经过 shell。参数为重复的 `--usageboard-param KEY=value`，过滤空字符串值后按键排序，并以同一形式传入当前会话语言 `USAGEBOARD_LANGUAGE`（覆盖同名用户参数）。`secret` 仅影响表单遮罩，仍明文存储在 config.json 并通过进程参数传递；当前未使用 Keychain 或独立 secret 传输通道。
 
 - 默认执行超时 15 秒；启动后确认插件是独立进程组首领才向该组发送信号。超时、取消或 stdout 超限时向整组发送 SIGTERM，保留最多 1 秒清理宽限期，再对仍存活成员发送 SIGKILL；父进程提前退出不会缩短后代的宽限期。响应 SIGTERM 在宽限期内自行退出的进程按实际退出码报告而非超时；被 SIGKILL 强杀仍报超时，任务取消则报已取消。正常退出后仍存活的同组后代也会清理，合法父进程输出仍可成功发布。未确认独立组时只处理直接进程；自行脱离进程组的后代不在保证范围内。
 - stdout 最多 8 MiB；stderr 保留前 64 KiB 并持续排空，避免管道阻塞。
@@ -140,7 +146,7 @@ Command Code 使用 API Key 查询 `/alpha/billing/credits` 的 `windowLimits.fi
 
 `PluginMetadataParser` 读取 UTF-8 文件，仅扫描前 80 行。`UsageBoardPlugin:` 和结束标记 `/UsageBoardPlugin` 及整个 JSON 注释块都必须在此范围内。无效或未闭合的块不产生 metadata。
 
-Kimi 提供 PLAN choice：Go / Plus / Pro / Max，设置默认 Go，徽标依次使用 gray / indigo / blue / orange；套餐仅来自手动配置，未配置或值无效时省略徽标，不再解析用量响应中的 `user.membership.level`（2026-09-20 实测该字段已不存在，官方控制台 GetSubscription 接口使用同一 API Key 返回 401，因此删除等级回退映射，也不根据额度或钱包 subscriptionId 猜测等级）。Kimi 对无法确认时区的可选重置时间返回 null，不猜测 UTC；MiniMax 保持缺失 base_resp 的既有兼容行为，但显式 null 或其他非对象值返回解析失败；Claude 的空套餐字段回退配置值，再回退 pro。
+Kimi 提供 PLAN choice：Go / Plus / Pro / Max，设置默认 Go，徽标依次使用 gray / indigo / blue / orange；套餐仅来自手动配置，未配置或值无效时省略徽标，不解析用量响应中的 `user.membership.level`，不根据额度或钱包 subscriptionId 猜测等级。Kimi 对无法确认时区的可选重置时间返回 null，不猜测 UTC；MiniMax 保持缺失 base_resp 的既有兼容行为，但显式 null 或其他非对象值返回解析失败；Claude 的空套餐字段回退配置值，再回退 pro。
 
 元数据参数支持 string、secret、integer、boolean、choice、directory、file。展示字段通过 `field@zh-Hans` / `field@en` 提供翻译，缺失或为空时回退基础字段。用量项目名称和错误文本由插件按语言参数直接返回，不从 metadata 翻译。
 
@@ -159,6 +165,8 @@ Kimi 提供 PLAN choice：Go / Plus / Pro / Max，设置默认 Go，徽标依次
 { "error": "API Key 无效" }
 ```
 
+输出字段的必填性以 JSON 解码为准：`UsageItem` 必须包含 id、name、used、limit、displayStyle、status；Swift 初始化方法中的默认值不适用于 JSON 解码。可选日期支持省略或 null。
+
 chart 使用 `kind: "line"` 的桶/分段数据，line/bar 的实际渲染由全局 chartMode 决定。bucketUnit 支持 hour/day，解码时其他值回退 day。完整字段见插件编写说明，避免在架构文档重复协议表。
 
 内置安装器每次启动检查包内 `Contents/Resources/Plugins/`（开发时回退当前目录 `Resources/BundledPlugins/`），只为非 `_` 开头的 `.py` 创建链接。正确链接跳过、旧链接或失效链接替换，同名普通文件保留；`_common.py` 留在包内与脚本一起使用。
@@ -173,7 +181,7 @@ App 采用 `.accessory` 激活策略，不占 Dock 位。AppDelegate 管理 NSSt
 - popover 固定宽 380，高度随内容缩放，上限为状态栏所在屏幕可用高度的 75%。OverviewView 使用纵向 fixedSize 支持收缩，MeasuredScrollView 按扣除标题等区域后的预算滚动。
 - DashboardView 切换 grouped/tabs；PluginGroupView 展示图标、套餐、倒计时、用量和可折叠图表。重置卡默认收起为数量与最近到期摘要，整行点击展开按到期时间排序的两列卡片明细（每排两张，奇数张时最后一张左对齐）；常态使用次级文字色，临近到期才着色。
 - 倒计时、重置时间、用量项目名称和图表统计标题/单位共用 `UB.Text.supporting`（主文字色的 75% 不透明度），保持深浅主题下的可读性。
-- UsageProgressBar 显式 color 优先，status 不决定颜色；未指定时的切色阈值与文字遮罩配色、PlanTag 徽章的 badgeColor 值域与预设匹配规则以插件编写说明的协议表为准，不在此重复。
+- UsageProgressBar 显式 color 优先，status 不决定颜色。App 默认在 100% 切红，Python `_common.color_for` / `color_for_pct` 在 90% 切红；除 DeepSeek 外的七个内置插件使用后者显式给色，DeepSeek 按余额独立计算。完整阈值与 badgeColor 值域见插件编写说明。进度条文字按填充区域遮罩，黄/橙/绿填充上用黑字，其他填充上用白字，未填充区域用主文字色。
 
 图表由 `TokenChartView.swift` 的 TokenUsageChartView 组织摘要、选择状态和模式，TokenLineChartPlot / TokenBarChartPlot 绘制：
 
@@ -201,9 +209,9 @@ BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径�
 
 检查和下载要求 HTTPS、无 URL 用户凭据以及成功 HTTP 状态，重定向最终 URL 也校验。Store 分别维护检查/安装忙碌状态。回滚判断基于脚本命令退出状态，不等于新 app 启动后的健康检查。当前下载限制不构成解压配额；仍未实施解压过程体积上限或独立发布者认证，发布及替换继续使用 ad-hoc 签名。
 
-`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 每 0.2 秒检查旧实例是否退出，最多等待 10 秒，超时中止而不覆盖运行中的 bundle；退出后构建 release 并启动；首次创建 bundle 使用 0.1.0，已有版本保留。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
+`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（2–3 段点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 每 0.2 秒检查旧实例是否退出，最多等待 10 秒，超时中止而不覆盖运行中的 bundle；退出后构建 release 并启动；默认保留已有版本，首次创建 bundle 使用 0.1.0，也可用第一个参数指定版本；build 号每次重算，可用 APP_BUILD 覆盖。build.sh 在编译前写入版本/build，编译失败后可能留下旧二进制与新元数据；release.sh 则在编译成功后写入。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
 
-`scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；build 号默认取 UTC `%y%j%H%M`（年+年积日+时+分），可用 APP_BUILD 覆盖。更新说明使用第二个参数，否则取最新本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它生成 ZIP/version.json（含 `latestVersion`、`latestBuild`、`downloadURL`、`notes`）并保留远端最近三个 ZIP，不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；操作步骤见 README 和项目指引。关于页显示 `版本 (build)` 供核对。
+`scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；build 号默认取 UTC `%y%j%H%M`（年+年积日+时+分），可用 APP_BUILD 覆盖。脚本会尝试 `git fetch --tags`（失败忽略）；更新说明使用第二个参数，否则取按版本排序最高的本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它在生成新 ZIP 前删除本地 `dist/UsageBoard-*.zip`，生成 version.json（含 `updatedAt`、`latestVersion`、`latestBuild`、`downloadURL`、`notes`），上传后按修改时间保留远端最近三个 ZIP（不按语义版本排序），不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；上传和各渠道发布不是原子事务，脚本没有失败自动回滚；部分失败后需先核对远端 ZIP 和 metadata 的实际状态。操作步骤见 README 和项目指引。关于页显示 `版本 (build)` 供核对。
 
 ## 8. 验证与维护
 
@@ -214,7 +222,9 @@ swift build
 swift test
 python3 -m unittest discover -s Tests/PluginTests -q
 python3 -m py_compile Resources/BundledPlugins/*.py
-bash -n scripts/build.sh scripts/release.sh
+for script in scripts/*.sh; do
+  bash -n "$script" || exit 1
+done
 for script in Tests/ScriptTests/*.sh; do
   bash "$script" || exit 1
 done
@@ -226,4 +236,4 @@ done
 
 新增能力按现有职责落点：模型在 Core，调度/配置方法在 Store，设置项在对应 Settings 文件，图表在 Dashboard；仅共享视觉原语放入 DesignSystem。同步用户说明、插件协议和相关测试，避免复制实现代码到计划文档。
 
-TASKS 只维护待办、待验收和简短收口记录。已完成实施步骤及临时代码清单清理，长期行为留在本架构文档，提交和发布历史查询 Git。TASKS.md、CLAUDE.md、AGENTS.md 当前按仓库忽略规则在本地维护。
+TASKS 只维护待办、待验收、暂缓决策和最近一次简短收口记录。已完成实施步骤及临时代码清单清理，长期行为留在本架构文档，提交和发布历史查询 Git。TASKS.md、CLAUDE.md、AGENTS.md 当前按仓库忽略规则在本地维护。`design/` 同样为本地历史设计参考，现行行为和架构以代码及本文为准，设计交付清单不作为待实施计划。
