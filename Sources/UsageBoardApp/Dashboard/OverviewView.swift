@@ -99,7 +99,7 @@ private struct PopoverHeaderHeightKey: PreferenceKey {
     }
 }
 
-/// 有新版本时显示在刷新按钮前的指示灯胶囊，点击打开更新提示。
+/// 有新版本时显示在刷新按钮前的更新图标，点击打开更新提示。
 struct UpdateBadgeButton: View {
     let info: UpdateInfo
     let store: UsageBoardStore
@@ -108,18 +108,11 @@ struct UpdateBadgeButton: View {
         Button {
             UpdatePrompt.present(info: info, store: store)
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.green)
-                Text(info.latestVersion)
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Color.green.opacity(0.15)))
+            Image(systemName: "arrow.up.circle")
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 24, height: 24)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .disabled(store.isUpdating || store.isCheckingForUpdates)
         .help(AppLocalization.shared.updateAvailableTitle(latestVersion: info.latestVersion))
         .accessibilityLabel(AppLocalization.shared.updateAvailableTitle(latestVersion: info.latestVersion))

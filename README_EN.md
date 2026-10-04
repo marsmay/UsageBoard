@@ -43,7 +43,7 @@ UsageBoard is a native macOS menu bar app that aggregates quotas, balances, and 
 - Settings forms are generated from script metadata, including segmented controls and directory/file pickers; new plugins are disabled by default and required parameters are validated before enabling. Plugin drafts survive settings tab changes; closing settings offers Save, Discard, or Cancel, and removing a plugin requires confirmation.
 - Light, dark, or system theme applied immediately; bundled plugin icons work offline and follow the theme.
 - Chinese and English UI; settings fields support standard editing shortcuts (⌘Z / ⇧⌘Z / ⌘X / ⌘C / ⌘V / ⌘A).
-- Optional launch at login; background update checks every 6 hours, with a capsule at the top of the popover for new versions and a non-modal panel for download and installation.
+- Optional launch at login; background update checks every 6 hours, with an update icon at the top of the popover for new versions and a non-modal panel for download and installation.
 - Quitting waits for pending configuration saves; if saving takes longer than 5 seconds, the quit is cancelled and can be retried once saving completes.
 
 ## Installation
@@ -282,7 +282,7 @@ Main configuration JSON structure:
 ```
 
 - `overviewDisplayMode`: `grouped` / `tabs`; `chartMode`: `line` / `bar` (older configurations default to `line`); `theme`: `light` / `dark` / `system` (missing values default to `system`) — theme changes apply immediately and persist.
-- `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login; `showUpdateBadge` controls whether the popover shows the new-version capsule (defaults to `true` when absent).
+- `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login; `showUpdateBadge` controls whether the popover shows the update icon for new versions (defaults to `true` when absent).
 - `plugins[].stateID` is a persistent cache ID; saving script-path, parameter, or metadata changes through settings generates a new one. Startup metadata reloads and direct JSON edits do not rotate it.
 - `plugins[].executablePath` must be an actual file path; `~` and shell expressions are not expanded — use the file picker.
 - `plugins[].enabled`: when `false`, the plugin is not executed. `plugins[].metadata` is typically parsed from the script header comment block; `plugins[].parameterValues` stores values from the settings UI.

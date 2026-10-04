@@ -4,7 +4,7 @@ import SwiftUI
 import UsageBoardCore
 
 /// 统一的"发现新版本"提示：图标 + 版本信息 + 更新内容卡片 + 胶囊按钮。
-/// 仅由用户主动触发：点击主界面新版本胶囊，或在关于页手动检查更新。
+/// 仅由用户主动触发：点击主界面更新图标，或在关于页手动检查更新。
 /// 非模态浮动面板：不劫持事件循环，下载/安装期间 MainActor 正常工作。
 enum UpdatePrompt {
     @MainActor

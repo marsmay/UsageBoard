@@ -43,7 +43,7 @@ UsageBoard 是原生 macOS 菜单栏应用，以插件方式聚合 API、模型�
 - 插件参数表单由脚本元数据自动生成，支持分段控件、目录和文件选择器；新插件默认不启用，启用前校验必填参数；切换设置栏目保留插件草稿，关闭设置窗口时询问保存、放弃或取消，移除插件需确认。
 - 浅色 / 深色 / 跟随系统主题，切换即时生效；内置插件图标离线可用并随主题切换。
 - 中英文界面；设置输入框支持标准编辑快捷键（⌘Z / ⇧⌘Z / ⌘X / ⌘C / ⌘V / ⌘A）。
-- 支持开机启动；后台每 6 小时检查更新，新版本在弹层顶部以胶囊提示，在非模态面板中下载安装。
+- 支持开机启动；后台每 6 小时检查更新，新版本在弹层顶部以更新图标提示，在非模态面板中下载安装。
 - 退出时等待配置保存，超过 5 秒取消本次退出，保存完成后可再次退出。
 
 ## 安装
@@ -282,7 +282,7 @@ if __name__ == "__main__":
 ```
 
 - `overviewDisplayMode`：`grouped` / `tabs`；`chartMode`：`line` / `bar`（旧配置缺失回退 `line`）；`theme`：`light` / `dark` / `system`（缺失按 `system`），切换立即生效并持久保存。
-- `language`：`zh-Hans` / `en`，重启后生效；`launchAtLogin` 控制开机启动；`showUpdateBadge` 控制主界面是否显示新版本胶囊提示（缺失按 `true`）。
+- `language`：`zh-Hans` / `en`，重启后生效；`launchAtLogin` 控制开机启动；`showUpdateBadge` 控制主界面是否显示新版本更新图标（缺失按 `true`）。
 - `plugins[].stateID` 是持久化缓存 ID；在设置中保存脚本路径、参数或 metadata 变更时重新生成，启动重载 metadata 或直接编辑 JSON 不触发轮换。
 - `plugins[].executablePath` 使用实际文件路径，不展开 `~` 或 shell 表达式，建议通过文件选择器填写。
 - `plugins[].enabled` 为 `false` 时不执行插件；`plugins[].metadata` 通常由脚本头部注释块解析生成；`plugins[].parameterValues` 保存设置页填写的参数。

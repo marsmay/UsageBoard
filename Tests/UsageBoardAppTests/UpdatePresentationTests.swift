@@ -42,17 +42,8 @@ final class UpdatePresentationTests: XCTestCase {
                 XCTAssertEqual(try snapshot(host), before)
                 XCTAssertLessThanOrEqual(host.fittingSize.width, 380)
                 let output = FileManager.default.temporaryDirectory.appendingPathComponent("usageboard-update-\(language.rawValue)-\(appearance.rawValue).png")
-                // ImageRenderer cannot render AppKit-backed borderless buttons;
-                // capture only the changed SwiftUI controls for visual inspection.
-                let availableUpdate = try XCTUnwrap(store.availableUpdate)
-                let renderer = ImageRenderer(content: UpdateBadgeButton(info: availableUpdate, store: store)
-                    .padding(12)
-                    .frame(width: 380, alignment: .leading)
-                    .background(Color(nsColor: .windowBackgroundColor))
-                    .environment(\.colorScheme, appearance == .darkAqua ? .dark : .light))
-                renderer.scale = 2
-                let rendered = try XCTUnwrap(renderer.cgImage)
-                try XCTUnwrap(NSBitmapImageRep(cgImage: rendered).representation(using: .png, properties: [:])).write(to: output)
+                // Capture the hosting view to include AppKit-backed borderless buttons.
+                try snapshot(host).write(to: output)
 
                 store.updateMessage = nil
                 try await Task.sleep(for: .milliseconds(150))
@@ -83,12 +74,12 @@ final class UpdatePresentationTests: XCTestCase {
         store.setShowUpdateBadge(true)
         try await Task.sleep(for: .milliseconds(150))
         host.layoutSubtreeIfNeeded()
-        XCTAssertNotEqual(try snapshot(host), hidden, "Enabling the setting must render the capsule")
+        XCTAssertNotEqual(try snapshot(host), hidden, "Enabling the setting must render the update icon")
 
         store.setShowUpdateBadge(false)
         try await Task.sleep(for: .milliseconds(150))
         host.layoutSubtreeIfNeeded()
-        XCTAssertEqual(try snapshot(host), hidden, "Disabling the setting must hide the capsule again")
+        XCTAssertEqual(try snapshot(host), hidden, "Disabling the setting must hide the update icon again")
         await store.flushConfiguration()
     }
 

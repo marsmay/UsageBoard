@@ -512,10 +512,10 @@ final class UsageBoardStore: ObservableObject {
         return URL(string: string)
     }()
 
-    /// 自动检查间隔：6 小时，后台始终运行；开关只控制主界面是否显示新版本胶囊。
+    /// 自动检查间隔：6 小时，后台始终运行；开关只控制主界面是否显示更新图标。
     private static let updateCheckInterval: TimeInterval = 6 * 3600
 
-    /// 通用设置"新版本提示"开关：控制主界面是否显示新版本胶囊。
+    /// 通用设置"新版本提示"开关：控制主界面是否显示更新图标。
     func setShowUpdateBadge(_ enabled: Bool) {
         guard configuration.showUpdateBadge != enabled else { return }
         configuration.showUpdateBadge = enabled
