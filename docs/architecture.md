@@ -71,9 +71,13 @@ Core 模型按主题拆分：`AppConfiguration.swift`、`PluginConfiguration.swi
 | `states/` | PluginStateStore 的成功快照缓存，包含 updatedAt、items、badge、badgeColor、chart、credits |
 | `plugin-caches/` | GLM 默认统计缓存，按 API key 的哈希前缀区分；与 Store 快照缓存独立 |
 
+重启脚本另将 stderr 追加到 `~/Library/Logs/UsageBoard/relauncher.log`；语言重启和在线更新共用该日志位置。
+
 ### 3.2 配置与快照缓存
 
-配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、开启新版本更新图标、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。
+配置默认值：schemaVersion 1、中文、跟随系统主题、tabs、line、不启用开机启动、开启新版本更新图标、插件列表为空。安装内置链接不会自动把插件加入配置；用户仍需添加和启用。设置中新增插件默认禁用、刷新间隔 300 秒；JSON 解码为兼容旧配置，在缺失 `enabled` 时按 `true` 处理。刷新间隔缺失时为 300 秒，设置保存及运行时调度均限制为至少 5 秒。
+
+配置仅在 Store 初始化时加载，没有文件监视或热重载。手工编辑前应退出应用，避免内存配置的后续保存覆盖外部修改；重启后读取修改结果。
 
 `PluginConfiguration.id` 是不持久化的运行时 UUID；`stateID` 是持久化缓存 ID。通过 Store.updatePlugin 修改脚本路径、参数或 metadata 时会换用新的 stateID，防止复用旧配置的数据，旧 stateID 的磁盘与内存缓存在旧刷新（包括已开始的缓存写入）结束后后台清理；删除插件同样清理。启动时 `reloadAllMetadata` 仅重载 metadata 并补齐缺少的参数默认值，沿用已有 stateID；直接编辑 config.json 也不会自动触发上述轮换。执行路径使用实际文件路径，不展开 `~` 或 shell 表达式，以 `~` 开头的路径直接报错拒绝；插件参数是否展开路径由插件自身决定。
 
@@ -127,7 +131,7 @@ Store.refresh(pluginID:force:)
 - 重复刷新合并，包括手动强制刷新；force 只绕过新鲜度检查，不绕过启用、必填参数和已有执行任务检查。
 - 禁用、删除或修改执行配置时取消 in-flight 任务，取消传到后台执行器。修改配置后的新执行等待旧任务结束，已取消或过期结果不发布。
 - 系统睡眠期间停止发起定时刷新，唤醒后检查到期插件；4 小时安全超时避免状态永久停留在非活动态。
-- 更新检查由独立 Task 循环按 6 小时间隔在后台持续执行；自动检查失败静默并保留已有结果，只有手动检查向用户反馈错误。不自动弹出提示；有可用更新且 `showUpdateBadge` 开启（默认开启，通用设置可关闭）时，主界面顶部显示与设置按钮同风格的更新图标，不显示版本号，点击图标或在关于页手动检查更新才打开提示面板。关于页直接使用该次手动检查的更新结果回调，不监听后续 `availableUpdate` 变化来触发弹窗；无更新或失败后不保留提示意图。`UpdatePrompt` 使用非模态 NSPanel，订阅 `availableUpdate` 并在下一轮主线程读取最新结果，刷新版本、说明和窗口尺寸；结果为空时关闭，关闭时取消订阅，延迟展示前重新校验结果。面板操作及更新图标在检查或安装期间禁用；安装入口接收面板的 `UpdateInfo` 并验证它仍等于当前结果，避免过期确认安装其他版本。面板按钮显示下载/安装/失败状态，关于页显示详细进度和错误。
+- 更新检查由独立 Task 循环按 6 小时间隔执行，提示和安装流程见第 7 节。
 
 配置写入：`scheduleConfigurationWrite` 通过后台 `ConfigurationSaveCoordinator` 串行等待前一次保存，使用 generation 合并尚未执行的旧快照。`persistConfiguration` 只保存；`saveConfiguration` 还重建快照、调整调度和刷新到期插件。异步 `flushConfiguration` 持续等待保存，覆盖等待期间新增的写入；更新安装在请求退出前调用它。退出回调使用不依赖 MainActor 的同步等待，上限 5 秒；完成后返回 `.terminateNow`，超时返回 `.terminateCancel`，保留后台保存任务供完成后再次退出。
 
@@ -201,15 +205,21 @@ BrandTile 接受 HTTP(S)、绝对文件路径、file URL 和资源相对路径�
 
 ## 7. 更新、构建与发布
 
+更新检查由独立 Task 循环按 6 小时间隔在后台持续执行；自动检查失败静默并保留已有结果，只有手动检查向用户反馈错误。不自动弹出提示；有可用更新且 `showUpdateBadge` 开启（默认开启，通用设置可关闭）时，主界面顶部显示与设置按钮同风格的更新图标，不显示版本号，点击图标或在关于页手动检查更新才打开提示面板。
+
+关于页直接使用该次手动检查的更新结果回调，不监听后续 `availableUpdate` 变化来触发弹窗；无更新或失败后不保留提示意图。`UpdatePrompt` 使用非模态 NSPanel，订阅 `availableUpdate` 并在下一轮主线程读取最新结果，刷新版本、说明和窗口尺寸；结果为空时关闭，关闭时取消订阅，延迟展示前重新校验结果。
+
+面板操作及更新图标在检查或安装期间禁用；安装入口接收面板的 `UpdateInfo` 并验证它仍等于当前结果，避免过期确认安装其他版本。面板按钮显示下载/安装/失败状态，关于页显示详细进度和错误。
+
 在线更新由 Store 组装三步：
 
-1. UpdateChecker 从 Info.plist 的 UBUpdateCheckURL 获取 version.json，按点分整数比较版本（缺段补零，不是完整 SemVer 预发布规则）；版本号相同时若服务器 `latestBuild` 与本地 CFBundleVersion 均存在且更高，同样判定为有更新。
+1. UpdateChecker 从 Info.plist 的 UBUpdateCheckURL 获取 version.json，按点分整数比较版本（缺段补零，不是完整 SemVer 预发布规则）；版本号相同时若服务器 `latestBuild` 与本地 CFBundleVersion 均可用，且服务器 build 更高，同样判定为有更新。
 2. UpdateDownloader 用独立 URLSession 下载 ZIP，接收过程中限制为 64 MiB，请求无进展超时 60 秒、资源总时限 300 秒；失败或取消清理临时 ZIP。成功后用 ditto 解压；校验顶层唯一 UsageBoard.app、应用标识、APPL 类型、期望版本、期望 build（声明 latestBuild 时包内 CFBundleVersion 必须一致，拒绝同版本旧包被反复安装）和包内可执行普通文件。
 3. AppRelauncher 在目标目录暂存并签名新 app；旧进程退出后备份旧 app、替换并启动。移动或启动命令失败恢复旧 app，成功后清理备份。
 
 检查和下载要求 HTTPS、无 URL 用户凭据以及成功 HTTP 状态，重定向最终 URL 也校验。Store 分别维护检查/安装忙碌状态。回滚判断基于脚本命令退出状态，不等于新 app 启动后的健康检查。当前下载限制不构成解压配额；仍未实施解压过程体积上限或独立发布者认证，发布及替换继续使用 ad-hoc 签名。
 
-`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（2–3 段点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 每 0.2 秒检查旧实例是否退出，最多等待 10 秒，超时中止而不覆盖运行中的 bundle；退出后构建 release 并启动；默认保留已有版本，首次创建 bundle 使用 0.1.0，也可用第一个参数指定版本；build 号每次重算，可用 APP_BUILD 覆盖。build.sh 在编译前写入版本/build，编译失败后可能留下旧二进制与新元数据；release.sh 则在编译成功后写入。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
+`scripts/build.sh` 与 `scripts/release.sh` 的 Info.plist 创建、版本格式校验（2–3 段点分整数，非法退出）、资源复制、更新 URL 注入与 codesign 签名校验共用 `scripts/_package_common.sh`。build.sh 每 0.2 秒检查旧实例是否退出，最多等待 10 秒，超时中止而不覆盖运行中的 bundle；退出后构建 release 并启动；默认保留已有版本，首次创建 bundle 使用 0.1.0，也可用第一个参数指定版本；build 号每次按分钟重算，同一分钟内可能相同，可用 APP_BUILD 覆盖；同版本重发必须核对 build 高于已发布值。build.sh 在编译前写入版本/build，编译失败后可能留下旧二进制与新元数据；release.sh 则在编译成功后写入。两脚本均可用 UB_UPDATE_CHECK_URL 覆盖检查地址。
 
 `scripts/release.sh` 直接上传服务器：显式版本优先，否则递增本地 bundle 版本的 patch；build 号默认取 UTC `%y%j%H%M`（年+年积日+时+分），可用 APP_BUILD 覆盖。脚本会尝试 `git fetch --tags`（失败忽略）；更新说明使用第二个参数，否则取按版本排序最高的本地 tag 到 HEAD 的提交。目标版本及 build 号在 Swift 构建成功后才写入 bundle，构建失败保留已有版本和二进制；更新说明使用 printf 传入 JSON 转义，保留选项样式文本、反斜线和换行。它在生成新 ZIP 前删除本地 `dist/UsageBoard-*.zip`，生成 version.json（含 `updatedAt`、`latestVersion`、`latestBuild`、`downloadURL`、`notes`），上传后按修改时间保留远端最近三个 ZIP（不按语义版本排序），不会创建/推送 Git tag、发布 GitHub Release 或更新 Homebrew。完整发布需另行完成这些渠道并核对同一 ZIP 的 SHA-256；上传和各渠道发布不是原子事务，脚本没有失败自动回滚；部分失败后需先核对远端 ZIP 和 metadata 的实际状态。操作步骤见 README 和项目指引。关于页显示 `版本 (build)` 供核对。
 
@@ -236,4 +246,4 @@ done
 
 新增能力按现有职责落点：模型在 Core，调度/配置方法在 Store，设置项在对应 Settings 文件，图表在 Dashboard；仅共享视觉原语放入 DesignSystem。同步用户说明、插件协议和相关测试，避免复制实现代码到计划文档。
 
-TASKS 只维护待办、待验收、暂缓决策和最近一次简短收口记录。已完成实施步骤及临时代码清单清理，长期行为留在本架构文档，提交和发布历史查询 Git。TASKS.md、CLAUDE.md、AGENTS.md 当前按仓库忽略规则在本地维护。`design/` 同样为本地历史设计参考，现行行为和架构以代码及本文为准，设计交付清单不作为待实施计划。
+TASKS 只维护待办、受阻事项及恢复条件、待验收、暂缓决策和最近一次简短收口记录。已完成实施步骤及临时代码清单清理，长期行为留在本架构文档，提交和发布历史查询 Git。TASKS.md、CLAUDE.md、AGENTS.md 当前按仓库忽略规则在本地维护。`design/` 同样为本地历史设计参考，现行行为和架构以代码及本文为准，设计交付清单不作为待实施计划。

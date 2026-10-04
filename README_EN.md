@@ -241,7 +241,11 @@ On launch, the app creates symlinks in `plugins/` for bundled plugins (excluding
 
 `icon` accepts HTTP(S) URLs, absolute file paths, `file://` URLs, and resource-relative paths. Relative paths resolve against the app bundle's `Contents/Resources/` (or the current directory's `Resources/` during development); for `icons/light/` paths, dark mode prefers a same-name `icons/dark/` file and falls back to light, and load failures show the name's initial. Remote icons are limited to 2 MiB with a 10-second inactivity timeout and a 20-second total timeout (transfer bytes only — not decoded pixel memory); oversized or failed loads keep the placeholder.
 
+Update replacement and language-restart scripts write errors to `~/Library/Logs/UsageBoard/relauncher.log`, which can help diagnose failures to reopen after quitting.
+
 ## Configuration
+
+Configuration is read at startup; file changes are not watched. Quit the app before editing the file so pending saves do not overwrite your changes, then relaunch. Prefer the settings UI for configuration changes.
 
 Main configuration JSON structure:
 
@@ -285,7 +289,9 @@ Main configuration JSON structure:
 - `language`: `zh-Hans` / `en`, takes effect after restart; `launchAtLogin` controls launch at login; `showUpdateBadge` controls whether the popover shows the update icon for new versions (defaults to `true` when absent).
 - `plugins[].stateID` is a persistent cache ID; saving script-path, parameter, or metadata changes through settings generates a new one. Startup metadata reloads and direct JSON edits do not rotate it.
 - `plugins[].executablePath` must be an actual file path; `~` and shell expressions are not expanded — use the file picker.
-- `plugins[].enabled`: when `false`, the plugin is not executed. `plugins[].metadata` is typically parsed from the script header comment block; `plugins[].parameterValues` stores values from the settings UI.
+- `plugins[].enabled`: when `false`, the plugin is not executed. Plugins added through settings start disabled, but JSON decoding defaults a missing field to `true`; set it explicitly in handwritten configurations.
+- `plugins[].refreshIntervalSeconds`: defaults to 300 seconds when absent; settings saves and runtime scheduling enforce a minimum of 5 seconds.
+- `plugins[].metadata` is typically parsed from the script header comment block; `plugins[].parameterValues` stores values from the settings UI.
 
 ## Build & Test
 

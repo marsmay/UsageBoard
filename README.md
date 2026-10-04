@@ -241,7 +241,11 @@ if __name__ == "__main__":
 
 `icon` 兼容 HTTP(S) URL、绝对路径、`file://` URL 和资源相对路径；相对路径以 app 的 `Contents/Resources/` 为根（开发时以当前目录 `Resources/` 为根），`icons/light/` 路径在深色主题下优先加载同名 `icons/dark/` 文件，缺失回退 light，加载失败显示名称首字母占位。远程图标限制为 2 MiB、10 秒无进展超时和 20 秒总时限（仅传输字节，不含解码后像素内存），超量或失败保留占位图。
 
+更新替换和语言重启脚本的错误日志位于 `~/Library/Logs/UsageBoard/relauncher.log`，可用于排查退出后未重新打开等问题。
+
 ## 配置文件
+
+主配置在启动时读取，不监视文件变化。手动编辑前先退出应用，避免运行中的配置保存覆盖修改，编辑后重新启动。优先通过设置界面修改配置。
 
 主配置 JSON 结构：
 
@@ -285,7 +289,9 @@ if __name__ == "__main__":
 - `language`：`zh-Hans` / `en`，重启后生效；`launchAtLogin` 控制开机启动；`showUpdateBadge` 控制主界面是否显示新版本更新图标（缺失按 `true`）。
 - `plugins[].stateID` 是持久化缓存 ID；在设置中保存脚本路径、参数或 metadata 变更时重新生成，启动重载 metadata 或直接编辑 JSON 不触发轮换。
 - `plugins[].executablePath` 使用实际文件路径，不展开 `~` 或 shell 表达式，建议通过文件选择器填写。
-- `plugins[].enabled` 为 `false` 时不执行插件；`plugins[].metadata` 通常由脚本头部注释块解析生成；`plugins[].parameterValues` 保存设置页填写的参数。
+- `plugins[].enabled` 为 `false` 时不执行插件。设置中新增插件默认禁用，但 JSON 缺失该字段时按 `true` 解析，手写配置应显式填写。
+- `plugins[].refreshIntervalSeconds` 缺失时为 300 秒；设置保存和运行时调度的下限均为 5 秒。
+- `plugins[].metadata` 通常由脚本头部注释块解析生成；`plugins[].parameterValues` 保存设置页填写的参数。
 
 ## 构建与测试
 
