@@ -309,6 +309,8 @@ The release script uploads directly to the server — run it only when publishin
 bash scripts/release.sh <version> "<release notes>"
 ```
 
+Before publishing, use the commit history to prepare up to five release notes in Chinese, format each as `1. Description；`, separate them with actual newlines, and pass them explicitly to the script. Use concise, plain language focused on feature changes, usability improvements, and bug fixes. Do not copy commit messages or list implementation details; include technical information only when users need to take action or understand a compatibility impact.
+
 The script builds a release, writes the version and build number, copies resources, signs, generates `UsageBoard-<version>.zip` and `version.json` (with `updatedAt`, `latestVersion`, `latestBuild`, `downloadURL`, `notes`; release notes default to commits since the last tag), deletes existing local `dist/UsageBoard-*.zip` files before creating the new ZIP, uploads to the server, and retains the three most recently modified remote ZIPs (not the three highest semantic versions).
 
 It does not create or push Git tags, publish GitHub Releases, or update the Homebrew cask — complete those steps separately and verify matching versions and zip SHA-256 values across channels. Stop the existing UsageBoard instance before publishing; unlike build.sh, release.sh does not stop or launch the app.

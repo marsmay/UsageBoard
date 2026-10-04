@@ -309,6 +309,8 @@ bash scripts/build.sh                       # 本地构建、签名并启动 dis
 bash scripts/release.sh <version> "<release notes>"
 ```
 
+发布前根据提交记录整理不超过五条的中文更新日志，每条使用 `序号. 内容；`，以真实换行分隔，并显式传入脚本。更新日志面向用户，使用简洁、易懂的语言，重点说明功能变化、体验改善和问题修复；不要直接照搬提交信息或罗列实现细节，仅在涉及用户操作或兼容性影响时补充必要说明。
+
 脚本完成 release 构建、写入版本与 build 号、复制资源、签名、生成 `UsageBoard-<version>.zip` 和 `version.json`（含 `updatedAt`、`latestVersion`、`latestBuild`、`downloadURL`、`notes`；更新说明缺省时取最近 tag 到 HEAD 的提交），生成新 ZIP 前删除本地 `dist/UsageBoard-*.zip`；上传服务器后按修改时间保留最近三个 ZIP（不按语义版本排序）。
 
 脚本不创建或推送 Git tag、不发布 GitHub Release、不更新 Homebrew cask；完整发布需另行完成这些步骤，并核对各渠道版本与 zip SHA-256 一致。发布前先停止旧 UsageBoard 实例；与 build.sh 不同，release.sh 不负责停止或启动应用。
