@@ -82,7 +82,7 @@ xattr -cr /Applications/UsageBoard.app
 
 - **智谱**：使用国内站 API，兼容智谱和 ZAI 的 Coding Plan Key；`STAT_PERIOD` 支持 `none` / `7d` / `15d` / `30d`，选 `none` 关闭统计查询和图表。
 - **Claude**：通过 OAuth API 查询订阅用量；`PLAN` 选 `none` 时跳过 API 仅返回本地 JSONL 统计，与统计周期均选 `none` 时卡片显示"暂无用量数据"；本地 token 统计按 input、output、cache creation、cache read 实际消耗求和。会话记录按消息 ID 与请求 ID 去重；缺少请求 ID 时，按消息 ID 与会话合并流式内容块，时间戳不同不代表独立请求；同一 sidechain 重放只计一次，优先保留主记录，否则采用 token 总量较大的完整 usage。`CLAUDE_ONLY` 过滤第三方模型；`DATA_DIR` 指定数据目录（默认 `~/.claude`）；`STAT_PERIOD` 同上。
-- **Codex**：`AUTH_FILE`（默认 `~/.codex/auth.json`）与 `DATA_DIR`（默认 `~/.codex`）相互独立，修改统计目录不影响认证路径；列出账号当前可用的额度重置卡，查询失败不影响用量显示；`STAT_PERIOD` 同上。
+- **Codex**：`AUTH_FILE`（默认 `~/.codex/auth.json`）与 `DATA_DIR`（默认 `~/.codex`）相互独立，修改统计目录不影响认证路径；列出账号当前可用的额度重置卡，与用量并行查询，减轻网络延迟导致的卡片缺失，查询失败不影响用量显示；`STAT_PERIOD` 同上。
 - **DeepSeek**：`LIMIT` 设置余额展示上限，进度条按余额占上限比例着色。
 - **Command Code**：5 小时和周用量来自订阅窗口；月上限按周上限的两倍估算，月已用按上限减订阅余额计算，充值余额不参与。缺少有效周上限时省略月项。
 - **Kimi**：查询 5 小时滚动窗口和周用量；订阅计划在设置中手动选择 Go / Plus / Pro / Max（徽标灰 / 靛蓝 / 蓝 / 橙，默认 Go），插件不从用量响应推断会员等级，未选择或值无效时省略徽标。

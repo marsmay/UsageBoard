@@ -87,7 +87,7 @@ from _common import (  # noqa: E402
 
 ENDPOINT = "https://chatgpt.com/backend-api/wham/usage"
 CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
-CREDITS_TIMEOUT_SECONDS = 2.0
+CREDITS_TIMEOUT_SECONDS = 10.0
 # Leave time to serialize stdout before PluginExecutor's 15-second deadline.
 CREDITS_DEADLINE_SECONDS = 12.0
 CACHE_VERSION = 7  # Rebuild cumulative catch-up after stale counter regressions.
@@ -157,11 +157,12 @@ def fetch_reset_credits(access_token: str, account_id: str, timeout: float = CRE
     }, timeout=timeout)
 
 
-def best_effort_reset_credits(access_token: str, account_id: str, deadline: float) -> list[dict[str, Any]] | None:
+def start_reset_credits(access_token: str, account_id: str, deadline: float) -> queue.Queue:
+    result: queue.Queue = queue.Queue()
     timeout = min(CREDITS_TIMEOUT_SECONDS, deadline - monotonic())
     if timeout <= 0:
-        return None
-    result: queue.Queue = queue.Queue()
+        result.put(None)
+        return result
 
     def fetch() -> None:
         try:
@@ -172,8 +173,14 @@ def best_effort_reset_credits(access_token: str, account_id: str, deadline: floa
     # urllib's timeout covers socket operations, not the whole response. A daemon
     # lets the plugin exit even if DNS or a trickling response outlives our budget.
     threading.Thread(target=fetch, daemon=True).start()
+    return result
+
+
+def collect_reset_credits(result: queue.Queue, deadline: float) -> list[dict[str, Any]] | None:
     try:
-        return result.get(timeout=max(0, min(timeout, deadline - monotonic())))
+        # A completed response remains usable even if chart processing used up
+        # the budget. Only waiting for an unfinished request is deadline-bound.
+        return result.get(timeout=max(0, deadline - monotonic()))
     except queue.Empty:
         return None
 
@@ -727,6 +734,7 @@ def main() -> int:
     if not access_token or not account_id:
         return failure(translate(language, "auth_token_missing"))
 
+    credits_result = start_reset_credits(access_token, account_id, credits_deadline)
     items: list[dict[str, Any]] = []
     badge: str | None = None
     try:
@@ -762,7 +770,7 @@ def main() -> int:
 
     if not items:
         return failure(translate(language, "no_quota_data"))
-    credits = best_effort_reset_credits(access_token, account_id, credits_deadline)
+    credits = collect_reset_credits(credits_result, credits_deadline)
     return success(items, badge=badge, chart=chart, credits=credits)
 
 

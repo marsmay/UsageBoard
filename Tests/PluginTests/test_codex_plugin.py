@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
+import time as clock
 import unittest
 from datetime import date, datetime, time, timedelta
 from io import StringIO
@@ -198,16 +200,51 @@ class TestParseResetCredits(unittest.TestCase):
 class TestResetCreditsDeadline(unittest.TestCase):
     def test_exhausted_budget_skips_request(self):
         with patch.object(plugin, "fetch_reset_credits") as fetch:
-            self.assertIsNone(plugin.best_effort_reset_credits("t", "a", plugin.monotonic() - 1))
+            deadline = plugin.monotonic() - 1
+            result = plugin.start_reset_credits("t", "a", deadline)
+            self.assertIsNone(plugin.collect_reset_credits(result, deadline))
         fetch.assert_not_called()
 
     def test_remaining_budget_caps_request_timeout(self):
         payload = {"credits": [{"id": "c", "status": "available", "expires_at": "2027-01-01T00:00:00Z"}]}
         with patch.object(plugin, "monotonic", return_value=10), \
              patch.object(plugin, "fetch_reset_credits", return_value=payload) as fetch:
-            credits = plugin.best_effort_reset_credits("t", "a", deadline=10.5)
+            result = plugin.start_reset_credits("t", "a", deadline=10.5)
+            credits = plugin.collect_reset_credits(result, deadline=10.5)
         self.assertEqual(credits[0]["id"], "c")
         fetch.assert_called_once_with("t", "a", timeout=0.5)
+
+    def test_completed_credits_survive_chart_exhausting_wait_budget(self):
+        result = plugin.queue.Queue()
+        credits = [{"id": "c", "expiresAt": "2027-01-01T00:00:00Z"}]
+        result.put(credits)
+        self.assertEqual(plugin.collect_reset_credits(result, plugin.monotonic() - 1), credits)
+
+    def test_main_starts_credits_before_usage_and_keeps_response_slower_than_two_seconds(self):
+        started = threading.Event()
+
+        def fetch_credits(*args, **kwargs):
+            started.set()
+            clock.sleep(2.1)
+            return {"credits": [{"id": "c", "status": "available", "expires_at": "2027-01-01T00:00:00Z"}]}
+
+        def fetch_usage(*args):
+            if not started.wait(timeout=1):
+                raise AssertionError("credits request must run alongside usage")
+            return TestStatsPeriodNone.USAGE_PAYLOAD
+
+        with patch.object(sys, "argv", ["codex"]), \
+             patch.object(plugin, "load_auth", return_value={"access_token": "t", "account_id": "a"}), \
+             patch.object(plugin, "fetch_usage", side_effect=fetch_usage), \
+             patch.object(plugin, "fetch_reset_credits", side_effect=fetch_credits) as credits_fetch, \
+             patch.object(plugin, "maintain_chart_cache", return_value={}), \
+             patch("sys.stdout", new_callable=StringIO) as out:
+            self.assertEqual(plugin.main(), 0)
+        output = json.loads(out.getvalue())
+        self.assertEqual(output["credits"][0]["id"], "c")
+        self.assertGreater(credits_fetch.call_args.kwargs["timeout"], 2.1)
+        self.assertEqual(len(output["items"]), 1)
+        self.assertIn("chart", output)
 
     def test_slow_credit_response_does_not_hold_plugin_process_open(self):
         # Ignore the socket timeout to model slow DNS/a trickling body. Run in a
@@ -227,7 +264,7 @@ class TestResetCreditsDeadline(unittest.TestCase):
                 raise TimeoutError("simulated slow response")
             with patch.object(sys, "argv", ["codex", "--usageboard-param", "STAT_PERIOD=none"]), \
                  patch.object(plugin, "load_auth", return_value={"access_token": "t", "account_id": "a"}), \
-                 patch.object(plugin, "CREDITS_TIMEOUT_SECONDS", 0.1), \
+                 patch.object(plugin, "CREDITS_DEADLINE_SECONDS", 0.1), \
                  patch.object(plugin, "fetch_json", side_effect=fetch_json_stub):
                 sys.exit(plugin.main())
         ''')

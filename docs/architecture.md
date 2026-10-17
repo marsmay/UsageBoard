@@ -144,7 +144,7 @@ Store.refresh(pluginID:force:)
 - 环境设置 UTF-8，并以 `PYTHONDONTWRITEBYTECODE=1` 禁止写入 Python 字节码。
 - 非零退出码先作为错误处理，优先展示 stderr；退出码 0 时先识别非空顶层 error，再解码成功对象。
 
-Codex 在用量与本地统计完成后查询可选重置卡：最多额外等待 2 秒，且不超过 main 开始后的 12 秒截止时间；已无预算则跳过。请求在 daemon 线程执行，以限制包含 DNS 和响应读取在内的整体等待，超时省略 credits 并正常输出主数据。
+Codex 读取认证后立即在 daemon 线程查询可选重置卡，与用量请求及本地统计并行。网络操作超时最多 10 秒，并按 main 开始后的 12 秒剩余预算缩短；主数据完成后仅等待到该截止时间，为执行器的 15 秒期限保留输出余量。包含 DNS 和响应读取在内的等待受截止时间限制，超时省略 credits 并正常输出主数据；若统计结束时已超过截止时间，仍可取出已完成的重置卡结果，不再额外等待。
 
 Command Code 使用 API Key 查询 `/alpha/billing/credits` 的 `windowLimits.fiveHour` / `weekly`（used、cap、resetAt）及 `credits.monthlyCredits`；月上限暂按周上限两倍估算，月已用取上限减余额且下限为零，充值余额不参与。缺少周窗口或周上限不大于零时省略月项；缺失金额不伪造零用量。`subscriptions` 仅补充套餐与账期，失败不丢弃额度。两个请求分别使用 6 秒与 3 秒网络超时，不跟随携带密钥的重定向。套餐通过 badgeColor 显式映射 GO→teal、GOAT→blue、MAX→orange；插件复用现有 percent 输出、主题图标与错误处理，不改变协议。
 
